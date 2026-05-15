@@ -210,17 +210,3 @@ AI_API_KEY=
 
 - `docs/superpowers/specs/2026-05-15-project-requirement-splitting-design.md`
 - `docs/superpowers/plans/2026-05-15-project-requirement-splitting-go-implementation.md`
-
-## GitHub Push Notes
-
-GitHub no longer supports password authentication for Git operations.
-
-If HTTPS push fails with invalid username or token, use GitHub CLI:
-
-```bash
-gh auth login
-gh auth setup-git
-git push -u origin main
-```
-
-Or use a Personal Access Token as the password when Git prompts for credentials.
