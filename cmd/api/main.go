@@ -35,7 +35,15 @@ func main() {
 	planRepo := repository.NewPGPlanRepository(pool)
 	planPublishService := service.NewPlanPublishService(aiDraftRepo, planRepo)
 
-	router := apphttp.NewRouter(projectService, aiDraftService, planPublishService)
+	testRepo := repository.NewPGTestRepository(pool)
+	aiProvider := ai.NewStubProvider()
+	testService := service.NewTestService(testRepo, aiProvider)
+
+	defectRepo := repository.NewPGDefectRepository(pool)
+	// 注意看这里，testService 直接作为 AITestRunner 接口的实现传给了 defectService！
+	defectService := service.NewDefectService(defectRepo, testRepo, testService)
+
+	router := apphttp.NewRouter(projectService, aiDraftService, planPublishService, testService, defectService)
 
 	log.Printf("api listening on %s", cfg.Addr)
 	if err := http.ListenAndServe(cfg.Addr, router); err != nil {
