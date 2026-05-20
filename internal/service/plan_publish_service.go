@@ -7,35 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"requirement-splitting/internal/ai"
 	"requirement-splitting/internal/domain"
 	"requirement-splitting/internal/repository"
 )
-
-// DraftOutputJSON 定义了我们期望从 AI 获取的结构化 JSON 格式
-// 这里假设了 AI 返回的大致层级结构，你需要确保你的 AI Stub Provider 也是按这个结构返回的
-type DraftOutputJSON struct {
-	Modules []struct {
-		Name          string `json:"name"`
-		Description   string `json:"description"`
-		FeaturePoints []struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			Tasks       []struct {
-				Name string `json:"name"`
-			} `json:"tasks"`
-			TestCases []struct {
-				Title string `json:"title"`
-			} `json:"test_cases"`
-		} `json:"feature_points"`
-	} `json:"modules"`
-	Milestones []struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	} `json:"milestones"`
-	AcceptanceItems []struct {
-		Description string `json:"description"`
-	} `json:"acceptance_items"`
-}
 
 type PlanPublishService struct {
 	draftRepo repository.AIDraftRepository
@@ -73,7 +48,7 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 	// if targetDraft.Status != domain.AIDraftStatusValidated { ... }
 
 	// 2. 解析 JSON
-	var outData DraftOutputJSON
+	var outData ai.SplitRequirementResult
 	if err := json.Unmarshal(targetDraft.OutputJSON, &outData); err != nil {
 		return fmt.Errorf("failed to parse draft output JSON: %w", err)
 	}
@@ -85,34 +60,15 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 		DraftID:   draftID,
 	}
 
+	moduleIDsByKey := make(map[string]string)
+	featurePointIDsByKey := make(map[string]string)
+
 	for i, m := range outData.Modules {
 		modID := generateSimpleID(fmt.Sprintf("mod-%d", i))
+		moduleIDsByKey[m.Key] = modID
 		plan.Modules = append(plan.Modules, domain.Module{
 			ID: modID, ProjectID: projectID, Name: m.Name, Description: m.Description, CreatedAt: now,
 		})
-
-		for j, fp := range m.FeaturePoints {
-			fpID := generateSimpleID(fmt.Sprintf("fp-%d-%d", i, j))
-			plan.FeaturePoints = append(plan.FeaturePoints, domain.FeaturePoint{
-				ID: fpID, ProjectID: projectID, ModuleID: modID, Name: fp.Name, Description: fp.Description, CreatedAt: now,
-			})
-
-			for k, t := range fp.Tasks {
-				plan.DevTasks = append(plan.DevTasks, domain.DevTask{
-					ID:        generateSimpleID(fmt.Sprintf("task-%d-%d-%d", i, j, k)),
-					ProjectID: projectID, FeaturePointID: fpID, Name: t.Name, Status: string(domain.TaskStatusPendingDev), CreatedAt: now,
-				})
-			}
-
-			for k, tc := range fp.TestCases {
-				plan.TestCases = append(plan.TestCases, domain.TestCase{
-					ID:        generateSimpleID(fmt.Sprintf("tc-%d-%d-%d", i, j, k)),
-					ProjectID: projectID, FeaturePointID: fpID, Title: tc.Title,
-					ConfirmationStatus: string(domain.TestCaseConfirmationPending), // 核心设定：待人工确认
-					CreatedAt:          now,
-				})
-			}
-		}
 	}
 
 	for i, ms := range outData.Milestones {
@@ -121,9 +77,44 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 		})
 	}
 
+	for i, fp := range outData.FeaturePoints {
+		fpID := generateSimpleID(fmt.Sprintf("fp-%d", i))
+		featurePointIDsByKey[fp.Key] = fpID
+		plan.FeaturePoints = append(plan.FeaturePoints, domain.FeaturePoint{
+			ID:          fpID,
+			ProjectID:   projectID,
+			ModuleID:    moduleIDsByKey[fp.ModuleKey],
+			Name:        fp.Title,
+			Description: fp.Description,
+			CreatedAt:   now,
+		})
+	}
+
+	for i, task := range outData.DevTasks {
+		plan.DevTasks = append(plan.DevTasks, domain.DevTask{
+			ID:             generateSimpleID(fmt.Sprintf("task-%d", i)),
+			ProjectID:      projectID,
+			FeaturePointID: featurePointIDsByKey[task.FeaturePointKey],
+			Name:           task.Title,
+			Status:         string(domain.TaskStatusPendingDev),
+			CreatedAt:      now,
+		})
+	}
+
+	for i, tc := range outData.TestCases {
+		plan.TestCases = append(plan.TestCases, domain.TestCase{
+			ID:                 generateSimpleID(fmt.Sprintf("tc-%d", i)),
+			ProjectID:          projectID,
+			FeaturePointID:     featurePointIDsByKey[tc.FeaturePointKey],
+			Title:              tc.Title,
+			ConfirmationStatus: string(domain.TestCaseConfirmationPending),
+			CreatedAt:          now,
+		})
+	}
+
 	for i, acc := range outData.AcceptanceItems {
 		plan.AcceptanceItems = append(plan.AcceptanceItems, domain.AcceptanceItem{
-			ID: generateSimpleID(fmt.Sprintf("acc-%d", i)), ProjectID: projectID, Description: acc.Description, CreatedAt: now,
+			ID: generateSimpleID(fmt.Sprintf("acc-%d", i)), ProjectID: projectID, Description: acc.PassCriteria, CreatedAt: now,
 		})
 	}
 

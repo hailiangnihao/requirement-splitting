@@ -49,7 +49,15 @@ func (s *HealthService) GetProjectHealth(ctx context.Context, projectID string) 
 	taskInput := ai.TaskInput{
 		Type:      ai.TaskType("generate_health_insight"),
 		ProjectID: projectID,
-		Payload:   metrics, // 直接把刚才算出来的各项指标喂给 AI
+		Payload: map[string]any{
+			"feature_point_count":    metrics.FeaturePointCount,
+			"untested_feature_count": metrics.UntestedFeatureCount,
+			"dev_task_total":         metrics.DevTaskTotal,
+			"dev_task_done":          metrics.DevTaskDone,
+			"active_defects":         metrics.ActiveDefects,
+			"recent_changes":         metrics.RecentChanges,
+			"base_score":             metrics.BaseScore,
+		},
 	}
 
 	output, err := s.provider.Run(ctx, taskInput)
