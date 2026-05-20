@@ -10,13 +10,15 @@ import (
 	"requirement-splitting/internal/service"
 )
 
-func NewRouter(projectService *service.ProjectService, aiDraftService *service.AIDraftService, planPublishService *service.PlanPublishService, testService *service.TestService, defectService *service.DefectService) http.Handler {
+func NewRouter(projectService *service.ProjectService, aiDraftService *service.AIDraftService, planPublishService *service.PlanPublishService, testService *service.TestService, defectService *service.DefectService, changeService *service.ChangeService, healthService *service.HealthService) http.Handler {
 	router := chi.NewRouter()
 	projectHandler := handlers.NewProjectHandler(projectService)
 	aiHandler := handlers.NewAIHandler(aiDraftService)
 	planHandler := handlers.NewPlanHandler(planPublishService)
 	testHandler := handlers.NewTestHandler(testService)
 	defectHandler := handlers.NewDefectHandler(defectService)
+	changeHandler := handlers.NewChangeHandler(changeService)
+	healthHandler := handlers.NewHealthHandler(healthService)
 
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -36,6 +38,13 @@ func NewRouter(projectService *service.ProjectService, aiDraftService *service.A
 	// 注册缺陷相关接口
 	router.Post("/api/projects/{project_id}/defects", defectHandler.CreateDefect)
 	router.Patch("/api/projects/{project_id}/defects/{id}/status", defectHandler.UpdateDefectStatus)
+
+	// 注册变更相关接口
+	router.Post("/api/projects/{project_id}/changes", changeHandler.SubmitChange)
+	router.Post("/api/projects/{project_id}/changes/{id}/analyze", changeHandler.AnalyzeChangeImpact)
+
+	// 注册健康度接口
+	router.Get("/api/projects/{project_id}/health", healthHandler.GetHealth)
 
 	return router
 }

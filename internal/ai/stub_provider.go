@@ -19,6 +19,8 @@ func (p *StubProvider) Run(ctx context.Context, input TaskInput) (TaskOutput, er
 		return TaskOutput{Type: input.Type, Result: executeAITestStub()}, nil
 	case TaskAnalyzeChangeImpact:
 		return TaskOutput{Type: input.Type, Result: analyzeChangeImpactStub()}, nil
+	case TaskType("generate_health_insight"):
+		return TaskOutput{Type: input.Type, Result: generateHealthInsightStub()}, nil
 	default:
 		return TaskOutput{}, fmt.Errorf("stub provider does not support task %s", input.Type)
 	}
@@ -87,6 +89,27 @@ func splitRequirementStub() map[string]any {
 		},
 		"risks": []map[string]any{
 			{"key": "risk_ai_overwrite", "category": "ai_control", "level": "high", "title": "AI 结果直接污染正式计划", "description": "必须通过草稿区和人工发布机制控制 AI 输出"},
+		},
+	}
+}
+
+func generateHealthInsightStub() map[string]any {
+	return map[string]any{
+		"health_status":     "at_risk",
+		"executive_summary": "表面开发进度可观，但核心链路质量存在隐患，新增功能缺乏测试保护。",
+		"top_risks": []map[string]any{
+			{
+				"title":       "测试覆盖盲区过大",
+				"description": "存在多个未编写用例的功能点（Untested Features），核心逻辑处于无保护上线状态。",
+			},
+			{
+				"title":       "缺陷修复滞后",
+				"description": "遗留了 Active Defects 且未被闭环，质量债务正在堆积。",
+			},
+		},
+		"action_items": []string{
+			"立即停止新功能开发（Feature Freeze），开展 Bug Bash 清理存量缺陷。",
+			"要求研发强制为高危功能点补齐正向测试用例并提交验证。",
 		},
 	}
 }
