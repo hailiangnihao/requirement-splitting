@@ -31,7 +31,11 @@ func main() {
 	projectService := service.NewProjectService(projectRepo)
 	aiDraftRepo := repository.NewPGAIDraftRepository(pool)
 	aiDraftService := service.NewAIDraftService(aiDraftRepo, ai.NewStubProvider())
-	router := apphttp.NewRouter(projectService, aiDraftService)
+
+	planRepo := repository.NewPGPlanRepository(pool)
+	planPublishService := service.NewPlanPublishService(aiDraftRepo, planRepo)
+
+	router := apphttp.NewRouter(projectService, aiDraftService, planPublishService)
 
 	log.Printf("api listening on %s", cfg.Addr)
 	if err := http.ListenAndServe(cfg.Addr, router); err != nil {
