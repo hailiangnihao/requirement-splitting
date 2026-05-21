@@ -2,14 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"requirement-splitting/internal/domain"
 	"requirement-splitting/internal/repository"
 )
-
-var ErrValidation = errors.New("validation failed")
 
 type ProjectService struct {
 	repo repository.ProjectRepository
@@ -117,6 +114,4 @@ func (s *ProjectService) ListRequirements(ctx context.Context, projectID string)
 	return s.repo.ListRequirements(ctx, projectID)
 }
 
-func fieldError(message string) error {
-	return errors.Join(ErrValidation, errors.New(message))
-}
+// fieldError moved to errors.go

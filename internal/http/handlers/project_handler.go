@@ -2,12 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	"requirement-splitting/internal/repository"
 	"requirement-splitting/internal/service"
 )
 
@@ -105,23 +103,4 @@ func (h *ProjectHandler) listRequirements(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, requirements)
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func writeServiceError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, service.ErrValidation):
-		writeError(w, http.StatusBadRequest, err.Error())
-	case errors.Is(err, repository.ErrNotFound):
-		writeError(w, http.StatusNotFound, "not found")
-	default:
-		writeError(w, http.StatusInternalServerError, "internal server error")
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
-}
+// Helper functions moved to helpers.go
