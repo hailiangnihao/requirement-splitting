@@ -80,61 +80,107 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { MagicStick } from '@element-plus/icons-vue';
+import { api } from '../../api/client';
 
+const route = useRoute();
+const router = useRouter();
 const rawRequirement = ref('');
 const splitStrategy = ref('stage2');
 const isSplitting = ref(false);
 const hasResult = ref(false);
 const treeData = ref([]);
+const currentDraftId = ref('');
 
 const defaultProps = { children: 'children', label: 'label' };
 
-// 模拟 AI 拆分过程
-const handleAiSplit = () => {
+const buildTreeFromDraft = (output) => {
+  const tasksByFeature = new Map();
+  const casesByFeature = new Map();
+  for (const task of output.dev_tasks || []) {
+    const list = tasksByFeature.get(task.feature_point_key) || [];
+    list.push({ id: task.key, label: task.title, type: '开发任务', desc: task.description });
+    tasksByFeature.set(task.feature_point_key, list);
+  }
+  for (const testCase of output.test_cases || []) {
+    const list = casesByFeature.get(testCase.feature_point_key) || [];
+    list.push({ id: testCase.key, label: testCase.title, type: '测试用例', desc: testCase.expected_result });
+    casesByFeature.set(testCase.feature_point_key, list);
+  }
+  const featuresByModule = new Map();
+  for (const feature of output.feature_points || []) {
+    const children = [
+      ...(tasksByFeature.get(feature.key) || []),
+      ...(casesByFeature.get(feature.key) || []),
+      ...(output.acceptance_items || [])
+        .filter(item => item.feature_point_key === feature.key)
+        .map(item => ({ id: item.key, label: item.title, type: '验收项', desc: item.pass_criteria }))
+    ];
+    const list = featuresByModule.get(feature.module_key) || [];
+    list.push({ id: feature.key, label: feature.title, type: '功能点', desc: feature.description, children });
+    featuresByModule.set(feature.module_key, list);
+  }
+  return (output.modules || []).map(module => ({
+    id: module.key,
+    label: module.name,
+    type: '模块',
+    desc: module.description,
+    children: featuresByModule.get(module.key) || []
+  }));
+};
+
+const loadLatestDraft = async () => {
+  const projectId = route.params.id;
+  if (!projectId) return;
+  try {
+    const drafts = await api.listDrafts(projectId);
+    const draft = (drafts || [])[0];
+    if (draft) {
+      currentDraftId.value = draft.id;
+      treeData.value = buildTreeFromDraft(draft.output_json || {});
+      hasResult.value = treeData.value.length > 0;
+    }
+    const requirements = await api.listRequirements(projectId);
+    if (requirements?.[0]?.content) {
+      rawRequirement.value = requirements[0].content;
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '拆分草稿加载失败');
+  }
+};
+
+onMounted(loadLatestDraft);
+
+const handleAiSplit = async () => {
   if (!rawRequirement.value.trim()) {
     ElMessage.warning('请先输入原始需求');
     return;
   }
-  
+  const projectId = route.params.id;
   isSplitting.value = true;
   hasResult.value = false;
-
-  // 模拟请求延迟，展示 AI 思考态
-  setTimeout(() => {
-    treeData.value = [
-      {
-        id: 1, label: '用户认证模块', type: '模块',
-        children: [
-          {
-            id: 11, label: '账号密码登录', type: '功能点', desc: '支持用户名/手机号+密码登录，包含错误重试限制',
-            children: [
-              { id: 111, label: '开发：登录接口开发及鉴权', type: '开发任务' },
-              { id: 112, label: '开发：前端登录页面及表单校验', type: '开发任务' },
-              { id: 113, label: '测试：登录异常场景(错密/空值)测试', type: '测试用例' },
-              { id: 114, label: '验收：有效用户能够正常登录系统并保持会话', type: '验收项' },
-            ]
-          }
-        ]
-      },
-      {
-        id: 2, label: '项目管理模块', type: '模块',
-        children: [
-          {
-            id: 21, label: '项目列表与搜索', type: '功能点', desc: '支持按状态、负责人筛选项目',
-            children: [
-              { id: 211, label: '开发：列表查询接口集成', type: '开发任务' }
-            ]
-          }
-        ]
-      }
-    ];
-    isSplitting.value = false;
+  try {
+    const requirement = await api.createRequirement(projectId, {
+      title: '原始需求',
+      content: rawRequirement.value,
+      source_type: 'manual'
+    });
+    const draft = await api.splitRequirement(projectId, {
+      requirement_id: requirement.id,
+      content: rawRequirement.value
+    });
+    currentDraftId.value = draft.id;
+    treeData.value = buildTreeFromDraft(draft.output_json || {});
     hasResult.value = true;
-    ElMessage.success('🎉 AI 拆分完成，已生成拆分草稿，请人工确认！');
-  }, 2500);
+    ElMessage.success('AI 拆分完成，已生成拆分草稿，请人工确认');
+  } catch (error) {
+    ElMessage.error(error.message || 'AI 拆分失败');
+  } finally {
+    isSplitting.value = false;
+  }
 };
 
 const resetTree = () => {
@@ -142,9 +188,18 @@ const resetTree = () => {
   hasResult.value = false;
 };
 
-const publishPlan = () => {
-  // 实际项目中这里会将草稿数据提交给后端生成正式版本
-  ElMessage.success('✅ 正式计划发布成功！可在任务看板和测试页查看');
+const publishPlan = async () => {
+  if (!currentDraftId.value) {
+    ElMessage.warning('没有可发布的草稿');
+    return;
+  }
+  try {
+    await api.publishDraft(route.params.id, currentDraftId.value);
+    ElMessage.success('正式计划发布成功，可在任务看板和测试页查看');
+    router.push(`/project/${route.params.id}/kanban`);
+  } catch (error) {
+    ElMessage.error(error.message || '正式计划发布失败');
+  }
 };
 
 // 根据节点类型返回不同的标签颜色

@@ -44,7 +44,7 @@ import { useRoute } from 'vue-router';
 
 const route = useRoute();
 // 实际开发中可以通过路由参数或全局状态(Pinia)获取当前选中的项目ID
-const currentProjectId = computed(() => route.params.id || 'demo-1');
+const currentProjectId = computed(() => route.params.id || '');
 </script>
 
 <style scoped>

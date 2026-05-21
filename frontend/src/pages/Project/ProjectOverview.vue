@@ -3,9 +3,9 @@
     <!-- 顶部：项目标题与 AI 健康度状态 -->
     <div class="page-header">
       <div class="header-left">
-        <h2>电商后台重构项目 (V2.0)</h2>
+        <h2>{{ project?.name || '项目总览' }}</h2>
         <el-tag type="warning" effect="dark" size="large" class="health-tag">
-          <el-icon><Warning /></el-icon> 进度健康度：关注
+          <el-icon><Warning /></el-icon> 进度健康度：{{ healthLabel }}
         </el-tag>
       </div>
       <div class="header-right">
@@ -18,28 +18,28 @@
     <div class="metrics-row">
       <el-card shadow="hover" class="metric-card">
         <div class="metric-title">任务完成率</div>
-        <div class="metric-value">68<span class="unit">%</span></div>
+        <div class="metric-value">{{ taskRate }}<span class="unit">%</span></div>
         <div class="metric-footer">
-          总任务: 124 <el-divider direction="vertical" /> 已完成: 84
+          总任务: {{ health?.metrics?.dev_task_total || 0 }} <el-divider direction="vertical" /> 已完成: {{ health?.metrics?.dev_task_done || 0 }}
         </div>
       </el-card>
       <el-card shadow="hover" class="metric-card">
         <div class="metric-title">测试覆盖率</div>
-        <div class="metric-value">85<span class="unit">%</span></div>
+        <div class="metric-value">{{ coverageRate }}<span class="unit">%</span></div>
         <div class="metric-footer">
-          核心功能点已全部覆盖测试用例
+          未覆盖功能点: {{ health?.metrics?.untested_feature_count || 0 }}
         </div>
       </el-card>
       <el-card shadow="hover" class="metric-card">
         <div class="metric-title">活跃缺陷</div>
-        <div class="metric-value text-danger">12<span class="unit">个</span></div>
+        <div class="metric-value text-danger">{{ health?.metrics?.active_defects || 0 }}<span class="unit">个</span></div>
         <div class="metric-footer">
-          阻塞验收: <span class="text-danger font-bold">2</span> <el-divider direction="vertical" /> 严重: 3
+          当前未关闭缺陷数量
         </div>
       </el-card>
       <el-card shadow="hover" class="metric-card">
         <div class="metric-title">变更冲击</div>
-        <div class="metric-value text-warning">5<span class="unit">项</span></div>
+        <div class="metric-value text-warning">{{ health?.metrics?.recent_changes || 0 }}<span class="unit">项</span></div>
         <div class="metric-footer">
           待处理的需求变更影响范围
         </div>
@@ -79,17 +79,17 @@
         </template>
         <div class="insight-content">
           <el-alert
-            title="核心延期风险"
+            title="AI 洞察"
             type="error"
-            description="任务【对接飞书 OAuth2.0 获取 UserInfo】已超期 2 天，且有 2 个严重缺陷未修复，直接阻塞了【V1.0 基础功能】的测试验收。"
+            :description="healthInsight.executive_summary || '暂无风险洞察。'"
             show-icon
             :closable="false"
             class="insight-alert"
           />
           <el-alert
-            title="测试覆盖缺口"
+            title="重点风险"
             type="warning"
-            description="功能点【自动创建访客账号】尚未关联任何测试用例，建议立即让 AI 生成补充用例。"
+            :description="firstRisk"
             show-icon
             :closable="false"
             class="insight-alert"
@@ -97,7 +97,7 @@
           <el-alert
             title="下一步建议"
             type="success"
-            description="1. 优先推进处理 BUG-101 和 BUG-102，解除验收阻塞。 2. 确认最新的【扫码登录】需求变更范围草稿。"
+            :description="firstAction"
             show-icon
             :closable="false"
             class="insight-alert"
@@ -138,19 +138,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, markRaw } from 'vue';
+import { ref, computed, onMounted, onUnmounted, markRaw, nextTick } from 'vue';
+import { useRoute } from 'vue-router';
 import * as echarts from 'echarts';
 import { Warning, MagicStick } from '@element-plus/icons-vue';
+import { api } from '../../api/client';
 
+const route = useRoute();
 const taskChartRef = ref(null);
 const bugChartRef = ref(null);
+const project = ref(null);
+const health = ref(null);
 
 let taskChart = null;
 let bugChart = null;
 
 onMounted(() => {
-  initTaskChart();
-  initBugChart();
+  loadOverview();
   window.addEventListener('resize', handleResize);
 });
 
@@ -163,6 +167,34 @@ onUnmounted(() => {
 const handleResize = () => {
   if (taskChart) taskChart.resize();
   if (bugChart) bugChart.resize();
+};
+
+const healthInsight = computed(() => health.value?.insight || {});
+const healthLabel = computed(() => {
+  const score = health.value?.metrics?.base_score ?? 0;
+  if (score >= 80) return '健康';
+  if (score >= 60) return '关注';
+  return '风险';
+});
+const taskRate = computed(() => {
+  const total = health.value?.metrics?.dev_task_total || 0;
+  const done = health.value?.metrics?.dev_task_done || 0;
+  return total ? Math.round((done / total) * 100) : 0;
+});
+const coverageRate = computed(() => {
+  const total = health.value?.metrics?.feature_point_count || 0;
+  const untested = health.value?.metrics?.untested_feature_count || 0;
+  return total ? Math.round(((total - untested) / total) * 100) : 0;
+});
+const firstRisk = computed(() => healthInsight.value.top_risks?.[0]?.description || '暂无重点风险。');
+const firstAction = computed(() => healthInsight.value.action_items?.[0] || '暂无下一步建议。');
+
+const loadOverview = async () => {
+  project.value = await api.getProject(route.params.id);
+  health.value = await api.getHealth(route.params.id);
+  await nextTick();
+  initTaskChart();
+  initBugChart();
 };
 
 // 初始化任务环形图
@@ -185,11 +217,8 @@ const initTaskChart = () => {
         },
         labelLine: { show: false },
         data: [
-          { value: 15, name: '待开发' },
-          { value: 30, name: '开发中' },
-          { value: 20, name: '待测试/测试中' },
-          { value: 10, name: '待验收' },
-          { value: 84, name: '已验收/已上线' }
+          { value: health.value?.metrics?.dev_task_total || 0, name: '总任务' },
+          { value: health.value?.metrics?.dev_task_done || 0, name: '已完成' }
         ]
       }
     ]
@@ -217,7 +246,7 @@ const initBugChart = () => {
           },
           borderRadius: [4, 4, 0, 0]
         },
-        data: [1, 3, 15, 8]
+        data: [0, health.value?.metrics?.active_defects || 0, 0, 0]
       }
     ]
   };

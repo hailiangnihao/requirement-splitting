@@ -138,10 +138,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { VideoPlay, Search, CircleCheckFilled, CircleCloseFilled, InfoFilled, Picture } from '@element-plus/icons-vue';
+import { api } from '../api/client';
 
+const route = useRoute();
 const activeTab = ref('testcases');
 const isAiTesting = ref(false);
 const searchKey = ref('');
@@ -150,42 +153,43 @@ const reviewFilter = ref('pending');
 const drawerVisible = ref(false);
 const currentCase = ref(null);
 
-// 模拟测试用例数据 (包含 AI 执行结果和复核状态)
-const testCases = ref([
-  {
-    id: 'TC-001', title: '正确输入账号密码，成功登录', feature: '账号密码登录', priority: '高',
-    precondition: '系统已存在测试账号 testuser / 123456',
-    steps: '1. 打开登录页\n2. 输入账号 testuser\n3. 输入密码 123456\n4. 点击登录按钮',
-    expected: '页面跳转至工作台，右上角显示用户信息',
-    aiResult: 'pass', actual: '跳转成功，API /api/user/info 返回 200，并渲染了用户信息。', 
-    hasScreenshot: true, log: null, reviewStatus: 'pending'
-  },
-  {
-    id: 'TC-002', title: '密码错误时，提示错误信息', feature: '账号密码登录', priority: '高',
-    precondition: '系统已存在测试账号 testuser',
-    steps: '1. 打开登录页\n2. 输入账号 testuser\n3. 输入错误密码 111111\n4. 点击登录按钮',
-    expected: '登录失败，表单提示"账号或密码错误"',
-    aiResult: 'fail', actual: '登录失败，但页面没有出现弹窗提示，API 返回了 401 错误。', 
-    hasScreenshot: true, log: '[Error] /api/login 401 Unauthorized. UI Notification not found in DOM.', 
-    reviewStatus: 'pending'
-  },
-  {
-    id: 'TC-003', title: '列表查询按负责人筛选', feature: '项目列表与搜索', priority: '中',
-    precondition: '存在多个不同负责人的项目数据',
-    steps: '1. 进入项目列表页\n2. 负责人下拉选择"张三"\n3. 点击查询',
-    expected: '列表仅展示负责人为张三的项目',
-    aiResult: 'pass', actual: '筛选成功，列表返回 2 条张三的项目数据。', 
-    hasScreenshot: false, log: null, reviewStatus: 'passed'
-  },
-  {
-    id: 'TC-004', title: '边界测试：项目名称超长截断', feature: '新建项目', priority: '低',
-    precondition: '进入新建项目页面',
-    steps: '1. 输入超过 50 个字符的项目名称\n2. 点击保存',
-    expected: '输入框应限制输入或提示超出长度',
-    aiResult: 'none', actual: '', 
-    hasScreenshot: false, log: null, reviewStatus: 'unreviewed'
+const testCases = ref([]);
+const testRuns = ref([]);
+
+const normalizeReviewStatus = (status) => ({ pending_review: 'pending', passed: 'passed', failed: 'failed', needs_retest: 'manual_retest', ignored: 'ignored' }[status] || 'unreviewed');
+const latestRunByCase = (caseId) => testRuns.value.find(run => run.test_case_id === caseId);
+
+const loadTestingData = async () => {
+  try {
+    const [cases, runs] = await Promise.all([
+      api.listTestCases(route.params.id),
+      api.listTestRuns(route.params.id)
+    ]);
+    testRuns.value = runs || [];
+    testCases.value = (cases || []).map(testCase => {
+      const run = latestRunByCase(testCase.id);
+      return {
+        id: testCase.id,
+        title: testCase.title,
+        feature: testCase.feature_point_id || '-',
+        priority: '高',
+        precondition: '-',
+        steps: '-',
+        expected: '-',
+        aiResult: run ? (run.is_defect_suggested ? 'fail' : 'pass') : 'none',
+        actual: run?.actual_result || '',
+        hasScreenshot: Boolean(run?.evidence?.screenshots?.length),
+        log: run?.evidence?.logs || null,
+        reviewStatus: normalizeReviewStatus(run?.review_status),
+        testRunId: run?.id
+      };
+    });
+  } catch (error) {
+    ElMessage.error(error.message || '测试数据加载失败');
   }
-]);
+};
+
+onMounted(loadTestingData);
 
 // 计算属性：过滤用例
 const filteredTestCases = computed(() => {
@@ -232,12 +236,22 @@ const getReviewStatusType = (status) => {
 };
 
 // 交互逻辑
-const triggerAITest = () => {
+const triggerAITest = async () => {
+  const target = testCases.value.find(item => item.aiResult === 'none') || testCases.value[0];
+  if (!target) {
+    ElMessage.warning('暂无测试用例');
+    return;
+  }
   isAiTesting.value = true;
-  setTimeout(() => {
+  try {
+    await api.runAiTest(route.params.id, target.id);
+    await loadTestingData();
+    ElMessage.success('AI 测试执行完毕，请进行人工复核。');
+  } catch (error) {
+    ElMessage.error(error.message || 'AI 测试执行失败');
+  } finally {
     isAiTesting.value = false;
-    ElMessage.success('AI 测试执行完毕，发现 1 处异常，请进行人工复核。');
-  }, 2000);
+  }
 };
 
 const openReviewDrawer = (row) => {
@@ -260,13 +274,14 @@ const submitReview = (action) => {
 };
 
 const finalizeReview = (action, msg) => {
-  // 更新本地数据状态模拟后端请求
-  const index = testCases.value.findIndex(tc => tc.id === currentCase.value.id);
-  if (index !== -1) {
-    testCases.value[index].reviewStatus = action;
-  }
-  ElMessage.success(msg);
-  drawerVisible.value = false;
+  const status = ({ manual_retest: 'needs_retest' }[action] || action);
+  api.reviewTestRun(route.params.id, currentCase.value.testRunId, status).then(async () => {
+    await loadTestingData();
+    ElMessage.success(msg);
+    drawerVisible.value = false;
+  }).catch(error => {
+    ElMessage.error(error.message || '复核失败');
+  });
 };
 </script>
 

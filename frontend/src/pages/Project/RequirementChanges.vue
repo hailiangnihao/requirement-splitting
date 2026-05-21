@@ -150,10 +150,13 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { MagicStick, Menu, List, CircleCheck } from '@element-plus/icons-vue';
+import { api } from '../../api/client';
 
+const route = useRoute();
 // 左侧表单数据
 const changeForm = reactive({
   title: '增加飞书扫码登录功能',
@@ -165,6 +168,7 @@ const changeForm = reactive({
 const isAnalyzing = ref(false);
 const hasResult = ref(false);
 const activeNames = ref(['modules', 'tasks', 'testcases']);
+const changes = ref([]);
 
 // 模拟 AI 分析出的结构化影响数据
 const impactData = reactive({
@@ -174,7 +178,17 @@ const impactData = reactive({
   testCases: []
 });
 
-const handleAnalyze = () => {
+const loadChanges = async () => {
+  try {
+    changes.value = await api.listChanges(route.params.id);
+  } catch (error) {
+    ElMessage.error(error.message || '变更列表加载失败');
+  }
+};
+
+onMounted(loadChanges);
+
+const handleAnalyze = async () => {
   if (!changeForm.title || !changeForm.content) {
     ElMessage.warning('请完整填写变更标题和具体内容');
     return;
@@ -182,38 +196,43 @@ const handleAnalyze = () => {
 
   isAnalyzing.value = true;
   hasResult.value = false;
-
-  // 模拟大模型穿透分析过程
-  setTimeout(() => {
-    impactData.modules = [
-      { action: '新增', title: '用户认证模块 -> 飞书扫码登录', reason: '需求明确提出要在原有认证体系中增加第三方授权链路。' },
-      { action: '修改', title: '用户认证模块 -> 登录路由守卫', reason: '新增了自动创建访客账号的逻辑，需要调整拦截规则。' }
-    ];
-    
-    impactData.tasks = [
-      { action: '新增', title: '后端：对接飞书 OAuth2.0 获取 UserInfo', status: '待排期', assignee: '', reason: '需要提供新的认证接口。' },
-      { action: '新增', title: '前端：集成飞书扫码组件及回调处理', status: '待排期', assignee: '', reason: '登录页需要重构，增加 Tab 切换。' },
-      { action: '修改', title: '后端：用户注册及默认权限逻辑', status: '已完成 (需返工)', assignee: '李四', reason: '需要支持静默创建“无权限访客账号”。' }
-    ];
-
-    impactData.testCases = [
-      { action: '新增', id: '待生成', title: '飞书扫码成功，且账号已绑定', reason: '正常授权登录流程覆盖。' },
-      { action: '新增', id: '待生成', title: '飞书扫码成功，但系统无对应手机号', reason: '验证是否能正确生成访客账号及无权限提示。' },
-      { action: '需修改', id: 'TC-001', title: '正确输入账号密码，成功登录', reason: '前端页面结构变化(增加了Tab)，自动化测试脚本的 DOM 选择器需要同步更新。' }
-    ];
-
-    isAnalyzing.value = false;
+  try {
+    const change = await api.createChange(route.params.id, {
+      title: changeForm.title,
+      content: `${changeForm.reason}\n\n${changeForm.content}`,
+      created_by: ''
+    });
+    await api.analyzeChange(route.params.id, change.id);
+    await loadChanges();
+    const analyzed = changes.value.find(item => item.id === change.id);
+    const analysis = analyzed?.impact_analysis || {};
+    impactData.level = analysis.risk_level || 'medium';
+    impactData.modules = (analysis.affected_feature_points || []).map(id => ({ action: '影响', title: id, reason: analysis.summary || 'AI 判断该功能点会受到影响。' }));
+    impactData.tasks = (analysis.new_tasks_suggested || []).map(task => ({ action: '新增', title: task.title, status: '待排期', assignee: '', reason: task.description }));
+    impactData.testCases = (analysis.affected_test_cases || []).map(item => ({ action: item.action, id: item.test_case_id, title: item.test_case_id, reason: item.reason }));
     hasResult.value = true;
-    ElMessage.success('🎉 AI 影响分析完成！已为您找出所有受波及的节点。');
-  }, 3000);
+    ElMessage.success('AI 影响分析完成');
+  } catch (error) {
+    ElMessage.error(error.message || '变更影响分析失败');
+  } finally {
+    isAnalyzing.value = false;
+  }
 };
 
 const resetAnalysis = () => {
   hasResult.value = false;
 };
 
-const confirmChange = () => {
-  ElMessage.success('✅ 已生成变更补充草稿，计划版本健康度已重新计算！');
+const confirmChange = async () => {
+  const latest = changes.value[0];
+  if (!latest) return;
+  try {
+    await api.updateChangeStatus(route.params.id, latest.id, 'accepted');
+    ElMessage.success('变更已确认');
+    await loadChanges();
+  } catch (error) {
+    ElMessage.error(error.message || '变更确认失败');
+  }
 };
 </script>
 

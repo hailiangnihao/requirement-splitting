@@ -19,10 +19,10 @@
         />
         <el-select v-model="filterStatus" placeholder="状态" clearable class="filter-select">
           <el-option label="待确认" value="pending_confirm" />
-          <el-option label="待修复" value="todo" />
-          <el-option label="修复中" value="doing" />
-          <el-option label="待回归" value="to_retest" />
-          <el-option label="回归通过" value="retest_passed" />
+          <el-option label="待修复" value="pending_fix" />
+          <el-option label="修复中" value="fixing" />
+          <el-option label="待回归" value="pending_regression" />
+          <el-option label="回归通过" value="regression_passed" />
           <el-option label="已关闭" value="closed" />
         </el-select>
         <el-select v-model="filterSeverity" placeholder="严重程度" clearable class="filter-select">
@@ -165,10 +165,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Search, Plus, WarnTriangleFilled } from '@element-plus/icons-vue';
+import { api } from '../api/client';
 
+const route = useRoute();
 // 过滤状态
 const searchKey = ref('');
 const filterStatus = ref('');
@@ -178,32 +181,32 @@ const filterBlocking = ref(false);
 const drawerVisible = ref(false);
 const currentBug = ref(null);
 
-// 模拟缺陷数据 (包含状态机)
-const bugs = ref([
-  {
-    id: 'BUG-101', title: '密码错误时没有弹窗提示，接口报401', status: 'pending_confirm', severity: 'high', priority: '高',
-    assignee: '张三', reporter: '王五', blockAcceptance: true, linkedCase: 'TC-002', createTime: '2023-10-27 10:00',
-    description: '使用错误密码登录时，前端页面没有按预期弹出错误提示框，导致用户不知道发生了什么。',
-    actualResult: '页面无响应，控制台看到 /api/login 返回 401。', expectedResult: '页面应提示“账号或密码错误”。'
-  },
-  {
-    id: 'BUG-102', title: '新建项目名称超长导致页面布局崩溃', status: 'todo', severity: 'critical', priority: '高',
-    assignee: '李四', reporter: '王五', blockAcceptance: true, linkedCase: 'TC-004', createTime: '2023-10-26 15:30',
-    description: '新建项目时，如果项目名称输入超过100个字符，列表页的卡片布局会被撑爆。',
-    actualResult: '卡片宽度溢出，覆盖了右侧的操作按钮。', expectedResult: '应自动截断并显示省略号，或者在输入时限制长度。'
-  },
-  {
-    id: 'BUG-103', title: '列表查询按钮颜色与设计稿不一致', status: 'to_retest', severity: 'low', priority: '低',
-    assignee: '张三', reporter: '王五', blockAcceptance: false, linkedCase: '', createTime: '2023-10-25 09:15',
-    description: '查询按钮应该是 primary 蓝色，现在显示的是 default 白色。',
-    actualResult: '显示为 default 按钮。', expectedResult: '应显示为 primary 按钮。'
-  },
-  {
-    id: 'BUG-104', title: '数据看板加载超时', status: 'retest_passed', severity: 'medium', priority: '中',
-    assignee: '李四', reporter: '赵六', blockAcceptance: false, linkedCase: 'TC-010', createTime: '2023-10-24 11:20',
-    description: '首页数据看板接口耗时超过 5 秒。', actualResult: '耗时 5.2s。', expectedResult: '控制在 1s 以内。'
+const bugs = ref([]);
+
+const loadBugs = async () => {
+  try {
+    const data = await api.listDefects(route.params.id);
+    bugs.value = (data || []).map(defect => ({
+      id: defect.id,
+      title: defect.title,
+      status: defect.status,
+      severity: 'high',
+      priority: '高',
+      assignee: defect.assigned_to || 'PM',
+      reporter: defect.created_by || 'AI',
+      blockAcceptance: false,
+      linkedCase: defect.test_run_id || '',
+      createTime: defect.created_at ? new Date(defect.created_at).toLocaleString() : '-',
+      description: defect.description,
+      actualResult: defect.description,
+      expectedResult: '-'
+    }));
+  } catch (error) {
+    ElMessage.error(error.message || '缺陷列表加载失败');
   }
-]);
+};
+
+onMounted(loadBugs);
 
 // 计算过滤后的列表
 const filteredBugs = computed(() => {
@@ -220,15 +223,15 @@ const filteredBugs = computed(() => {
 const getSeverityText = (s) => ({ 'critical': '致命', 'high': '严重', 'medium': '一般', 'low': '轻微' }[s] || s);
 const getStatusText = (s) => {
   const map = {
-    'pending_confirm': '待确认', 'todo': '待修复', 'doing': '修复中',
-    'to_retest': '待回归', 'retest_passed': '回归通过', 'closed': '已关闭', 'rejected': '拒绝/非缺陷'
+    'pending_confirm': '待确认', 'pending_fix': '待修复', 'fixing': '修复中',
+    'pending_regression': '待回归', 'regression_passed': '回归通过', 'closed': '已关闭', 'rejected': '拒绝/非缺陷'
   };
   return map[s] || s;
 };
 const getStatusType = (s) => {
   const map = {
-    'pending_confirm': 'warning', 'todo': 'danger', 'doing': 'primary',
-    'to_retest': 'warning', 'retest_passed': 'success', 'closed': 'info', 'rejected': 'info'
+    'pending_confirm': 'warning', 'pending_fix': 'danger', 'fixing': 'primary',
+    'pending_regression': 'warning', 'regression_passed': 'success', 'closed': 'info', 'rejected': 'info'
   };
   return map[s] || 'info';
 };
@@ -237,11 +240,11 @@ const getStatusType = (s) => {
 const availableActions = computed(() => {
   if (!currentBug.value) return [];
   switch(currentBug.value.status) {
-    case 'pending_confirm': return [{label: '确认缺陷', status: 'todo', type: 'primary'}, {label: '非缺陷拒绝', status: 'rejected', type: 'danger', plain: true}];
-    case 'todo': return [{label: '开始修复', status: 'doing', type: 'primary'}];
-    case 'doing': return [{label: '修复完成 (提测)', status: 'to_retest', type: 'success'}];
-    case 'to_retest': return [{label: '回归通过', status: 'retest_passed', type: 'success'}, {label: '回归不通过', status: 'todo', type: 'danger'}];
-    case 'retest_passed': return [{label: '关闭缺陷', status: 'closed', type: 'info'}];
+    case 'pending_confirm': return [{label: '确认缺陷', status: 'pending_fix', type: 'primary'}, {label: '非缺陷拒绝', status: 'rejected', type: 'danger', plain: true}];
+    case 'pending_fix': return [{label: '开始修复', status: 'fixing', type: 'primary'}];
+    case 'fixing': return [{label: '修复完成 (提测)', status: 'pending_regression', type: 'success'}];
+    case 'pending_regression': return [{label: '回归通过', status: 'regression_passed', type: 'success'}, {label: '回归不通过', status: 'pending_fix', type: 'danger'}];
+    case 'regression_passed': return [{label: '关闭缺陷', status: 'closed', type: 'info'}];
     default: return [];
   }
 });
@@ -254,12 +257,13 @@ const openBugDetail = (row) => {
 
 const updateBugStatus = (newStatus, actionLabel) => {
   ElMessageBox.confirm(`确定要执行【${actionLabel}】操作吗？`, '提示', { type: 'warning' }).then(() => {
-    const index = bugs.value.findIndex(b => b.id === currentBug.value.id);
-    if (index !== -1) {
-      bugs.value[index].status = newStatus;
-      currentBug.value.status = newStatus; // 同步更新抽屉内状态
-    }
-    ElMessage.success(`操作成功！缺陷状态已流转至 [${getStatusText(newStatus)}]`);
+    api.updateDefectStatus(route.params.id, currentBug.value.id, newStatus).then(async () => {
+      await loadBugs();
+      currentBug.value.status = newStatus;
+      ElMessage.success(`操作成功！缺陷状态已流转至 [${getStatusText(newStatus)}]`);
+    }).catch(error => {
+      ElMessage.error(error.message || '缺陷状态更新失败');
+    });
   }).catch(() => {});
 };
 </script>

@@ -162,7 +162,7 @@
           <el-button v-if="activeStep > 0 && activeStep < 2" @click="activeStep--">上一步</el-button>
           <el-button v-if="activeStep === 0" type="primary" @click="activeStep++">下一步</el-button>
           <el-button v-if="activeStep === 1" type="primary" @click="activeStep++">完成创建</el-button>
-          <el-button v-if="activeStep === 2" type="primary" @click="handleFinish">立即开始 AI 拆分</el-button>
+          <el-button v-if="activeStep === 2" type="primary" :loading="isCreating" @click="handleFinish">立即开始 AI 拆分</el-button>
           <el-button v-if="activeStep === 2" @click="wizardVisible = false">稍后处理</el-button>
         </div>
       </template>
@@ -171,9 +171,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import { Search, Plus, ArrowRight, Document } from '@element-plus/icons-vue';
+import { api } from '../../api/client';
 
 const router = useRouter();
 
@@ -181,13 +183,30 @@ const router = useRouter();
 const searchKey = ref('');
 const filterStatus = ref('');
 
-// 模拟项目数据
-const projects = ref([
-  { id: 'demo-1', name: '电商后台重构项目 (V2.0)', manager: '张三', status: '进行中', progress: 68, health: 'warning', coverStyle: 'gradient-blue', updateTime: '10分钟前' },
-  { id: 'demo-2', name: '全渠道会员营销系统', manager: '李四', status: '待开始', progress: 0, health: 'normal', coverStyle: 'gradient-purple', updateTime: '2天前' },
-  { id: 'demo-3', name: '仓储物流 WMS 升级', manager: '王五', status: '已延期', progress: 45, health: 'danger', coverStyle: 'gradient-orange', updateTime: '1小时前' },
-  { id: 'demo-4', name: '2023 Q4 官网迭代', manager: '张三', status: '已交付', progress: 100, health: 'success', coverStyle: 'gradient-green', updateTime: '1周前' }
-]);
+const projects = ref([]);
+const isCreating = ref(false);
+
+const normalizeProject = (project, index = 0) => ({
+  id: project.id,
+  name: project.name,
+  manager: project.owner_id || 'PM',
+  status: getStatusText(project.status),
+  progress: project.status === 'accepted' || project.status === 'launched' ? 100 : 0,
+  health: getHealthValue(project.health),
+  coverStyle: ['gradient-blue', 'gradient-purple', 'gradient-orange', 'gradient-green'][index % 4],
+  updateTime: formatTime(project.updated_at)
+});
+
+const loadProjects = async () => {
+  try {
+    const data = await api.listProjects();
+    projects.value = (data || []).map(normalizeProject);
+  } catch (error) {
+    ElMessage.error(error.message || '项目列表加载失败');
+  }
+};
+
+onMounted(loadProjects);
 
 // 过滤逻辑
 const filteredProjects = computed(() => {
@@ -207,14 +226,48 @@ const projectForm = reactive({
 
 const openWizard = () => {
   activeStep.value = 0;
-  // 重置表单逻辑可加在此处
+  projectForm.name = '';
+  projectForm.manager = '';
+  projectForm.dateRange = [];
+  projectForm.goal = '';
+  projectForm.rawRequirement = '';
   wizardVisible.value = true;
 };
 
-const handleFinish = () => {
-  wizardVisible.value = false;
-  // 实际应用中会基于创建好的新项目 ID 进行跳转
-  router.push('/project/demo-new/split');
+const handleFinish = async () => {
+  if (!projectForm.name.trim()) {
+    ElMessage.warning('请输入项目名称');
+    activeStep.value = 0;
+    return;
+  }
+  isCreating.value = true;
+  try {
+    const project = await api.createProject({
+      name: projectForm.name,
+      objective: projectForm.goal,
+      scope: projectForm.rawRequirement || projectForm.goal,
+      owner_id: '',
+      owner_role: 'owner'
+    });
+    if (projectForm.rawRequirement.trim()) {
+      const requirement = await api.createRequirement(project.id, {
+        content: projectForm.rawRequirement,
+        title: '原始需求',
+        source_type: 'manual'
+      });
+      await api.splitRequirement(project.id, {
+        requirement_id: requirement.id,
+        content: projectForm.rawRequirement
+      });
+    }
+    wizardVisible.value = false;
+    await loadProjects();
+    router.push(`/project/${project.id}/split`);
+  } catch (error) {
+    ElMessage.error(error.message || '项目创建失败');
+  } finally {
+    isCreating.value = false;
+  }
 };
 
 const goToProject = (id) => {
@@ -222,9 +275,12 @@ const goToProject = (id) => {
 };
 
 // 辅助格式化
-const getStatusValue = (status) => ({ '待开始': 'pending', '进行中': 'doing', '已延期': 'delayed', '已交付': 'done' }[status] || '');
-const getStatusType = (status) => ({ '待开始': 'info', '进行中': 'primary', '已延期': 'danger', '已交付': 'success' }[status] || 'info');
+const getStatusValue = (status) => ({ '待开始': 'pending', '进行中': 'doing', '已暂停': 'paused', '已验收': 'accepted', '已上线': 'done', '已归档': 'done' }[status] || '');
+const getStatusType = (status) => ({ '待开始': 'info', '进行中': 'primary', '已暂停': 'warning', '已验收': 'success', '已上线': 'success', '已归档': 'info' }[status] || 'info');
 const getHealthColor = (health) => ({ 'danger': '#F56C6C', 'warning': '#E6A23C', 'success': '#67C23A', 'normal': '#409EFF' }[health] || '#409EFF');
+const getStatusText = (status) => ({ planning: '待开始', active: '进行中', paused: '已暂停', accepted: '已验收', launched: '已上线', archived: '已归档' }[status] || status);
+const getHealthValue = (health) => ({ healthy: 'success', attention: 'warning', risk: 'danger', severe_risk: 'danger' }[health] || 'normal');
+const formatTime = (value) => value ? new Date(value).toLocaleString() : '-';
 </script>
 
 <style scoped>

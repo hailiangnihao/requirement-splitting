@@ -80,34 +80,46 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Search, Plus, Link } from '@element-plus/icons-vue';
+import { api } from '../api/client';
 
-// 看板列定义 (根据 PRD 5.5)
+const route = useRoute();
 const columns = [
-  { label: '待开发', status: 'todo' },
-  { label: '开发中', status: 'dev_doing' },
-  { label: '待测试', status: 'test_todo' },
-  { label: '测试中', status: 'test_doing' },
-  { label: '待验收', status: 'acceptance_todo' },
+  { label: '待开发', status: 'pending_dev' },
+  { label: '开发中', status: 'developing' },
+  { label: '待测试', status: 'pending_test' },
+  { label: '测试中', status: 'testing' },
+  { label: '待验收', status: 'pending_acceptance' },
   { label: '已验收', status: 'accepted' },
-  { label: '已上线', status: 'online' }
+  { label: '已上线', status: 'launched' }
 ];
 
-// 模拟任务数据
-const tasks = ref([
-  { id: 'TASK-101', title: '前端登录页面及表单校验', status: 'todo', priority: 'high', assignee: '张三', feature: '账号密码登录' },
-  { id: 'TASK-102', title: '登录接口开发及鉴权', status: 'dev_doing', priority: 'high', assignee: '李四', feature: '账号密码登录' },
-  { id: 'TASK-103', title: '列表查询接口集成', status: 'test_todo', priority: 'medium', assignee: '李四', feature: '项目列表与搜索' },
-  { id: 'TASK-104', title: '修改密码弹窗样式优化', status: 'test_doing', priority: 'low', assignee: '张三', feature: '找回密码' },
-  { id: 'TASK-105', title: '项目创建表单提交接口', status: 'acceptance_todo', priority: 'high', assignee: '李四', feature: '新建项目' }
-]);
+const tasks = ref([]);
 
 // 过滤状态
 const searchKey = ref('');
 const filterAssignee = ref('');
 const filterPriority = ref('');
+
+const loadTasks = async () => {
+  try {
+    const data = await api.listDevTasks(route.params.id);
+    tasks.value = (data || []).map(task => ({
+      ...task,
+      title: task.name,
+      priority: 'high',
+      assignee: 'PM',
+      feature: task.feature_point_id || '-'
+    }));
+  } catch (error) {
+    ElMessage.error(error.message || '任务加载失败');
+  }
+};
+
+onMounted(loadTasks);
 
 // 获取过滤后的任务列表
 const filteredTasks = computed(() => {
@@ -141,16 +153,19 @@ const onDragEnd = (event) => {
   draggedTask = null;
 };
 
-const onDrop = (event, targetStatus) => {
+const onDrop = async (event, targetStatus) => {
   if (draggedTask && draggedTask.status !== targetStatus) {
     const oldStatus = columns.find(c => c.status === draggedTask.status)?.label;
     const newStatus = columns.find(c => c.status === targetStatus)?.label;
-    
-    // 更新状态
+    const previousStatus = draggedTask.status;
     draggedTask.status = targetStatus;
-    
-    // 在实际项目中，这里需要调用后端 API 保存状态
-    ElMessage.success(`任务 ${draggedTask.id} 已从 [${oldStatus}] 移至 [${newStatus}]`);
+    try {
+      await api.updateDevTaskStatus(route.params.id, draggedTask.id, targetStatus);
+      ElMessage.success(`任务 ${draggedTask.id} 已从 [${oldStatus}] 移至 [${newStatus}]`);
+    } catch (error) {
+      draggedTask.status = previousStatus;
+      ElMessage.error(error.message || '任务状态更新失败');
+    }
   }
 };
 

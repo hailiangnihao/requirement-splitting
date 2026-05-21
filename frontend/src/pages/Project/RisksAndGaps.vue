@@ -15,15 +15,15 @@
       <!-- 整体健康度概览 -->
       <div class="health-overview">
         <div class="score-section">
-          <el-progress type="dashboard" :percentage="72" :color="scoreColor" :width="100">
+          <el-progress type="dashboard" :percentage="score" :color="scoreColor" :width="100">
             <template #default="{ percentage }">
               <span class="percentage-value">{{ percentage }}</span>
               <span class="percentage-label">分</span>
             </template>
           </el-progress>
           <div class="health-desc">
-            <h3>项目进度健康度：<span class="text-warning">关注</span></h3>
-            <p>经 AI 扫描，当前项目存在 <strong>2</strong> 个严重覆盖缺口，<strong>2</strong> 个阻塞性风险。建议优先处理验收阻塞与核心用例缺失问题。</p>
+            <h3>项目进度健康度：<span class="text-warning">{{ healthStatus }}</span></h3>
+            <p>{{ summary }}</p>
           </div>
         </div>
       </div>
@@ -99,11 +99,15 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Warning, CircleCloseFilled, MagicStick, Refresh } from '@element-plus/icons-vue';
+import { api } from '../../api/client';
 
+const route = useRoute();
 const isCalculating = ref(false);
+const health = ref(null);
 
 const scoreColor = [
   { color: '#f56c6c', percentage: 50 },
@@ -111,37 +115,36 @@ const scoreColor = [
   { color: '#67c23a', percentage: 100 },
 ];
 
-// 模拟：覆盖缺口数据 (如测试覆盖、验收覆盖)
-const coverageGaps = ref([
-  { 
-    id: 'GAP-001', severity: 'high', target: '功能点：飞书扫码登录', 
-    desc: '该核心功能点目前没有任何测试用例关联，且关联的 2 个开发任务均已处于“开发中”，存在极大的漏测风险。', 
-    aiSuggestion: '建议立即由 AI 根据需求草稿生成补充测试用例，并提交给测试人员复核。', 
-    actionText: 'AI 一键生成用例' 
-  },
-  { 
-    id: 'GAP-002', severity: 'medium', target: '里程碑：V1.0 基础功能上线', 
-    desc: '该里程碑下存在 3 个前端展示相关的任务尚未关联任何明确的“验收检查项”。', 
-    aiSuggestion: '建议让 AI 读取相关功能点并自动提取业务验收标准。', 
-    actionText: 'AI 补充验收项' 
-  }
-]);
+const score = computed(() => health.value?.metrics?.base_score || 0);
+const insight = computed(() => health.value?.insight || {});
+const summary = computed(() => insight.value.executive_summary || '暂无健康度分析。');
+const healthStatus = computed(() => score.value >= 80 ? '健康' : score.value >= 60 ? '关注' : '风险');
+const coverageGaps = computed(() => {
+  const metrics = health.value?.metrics;
+  if (!metrics || metrics.untested_feature_count === 0) return [];
+  return [{
+    id: 'GAP-001',
+    severity: 'high',
+    target: '测试覆盖缺口',
+    desc: `当前有 ${metrics.untested_feature_count} 个功能点没有测试用例。`,
+    aiSuggestion: insight.value.action_items?.[0] || '建议补齐测试用例。',
+    actionText: '查看测试用例'
+  }];
+});
+const blockingRisks = computed(() => (insight.value.top_risks || []).map((risk, index) => ({
+  id: `RSK-${index + 1}`,
+  severity: index === 0 ? 'high' : 'medium',
+  target: risk.title,
+  desc: risk.description,
+  aiSuggestion: insight.value.action_items?.[index] || '建议跟进处理。',
+  actionText: '查看详情'
+})));
 
-// 模拟：阻塞与延期风险数据 (如缺陷阻塞、进度超期)
-const blockingRisks = ref([
-  { 
-    id: 'RSK-001', severity: 'critical', target: '缺陷：BUG-101 密码错误无弹窗', 
-    desc: '该缺陷严重级别为“高”，且标记为【阻塞验收】，目前一直处于“待修复”状态，直接影响后续的 V1.0 回归测试。', 
-    aiSuggestion: '建议提升该缺陷的优先级，并自动向当前处理人【张三】发送飞书/邮件催办提醒。', 
-    actionText: '一键自动催办' 
-  },
-  { 
-    id: 'RSK-002', severity: 'high', target: '任务：对接飞书 OAuth2.0', 
-    desc: '该任务已超过计划完成时间 2 天，且作为“前端集成组件”任务的前置依赖，将导致相关链路整体延期。', 
-    aiSuggestion: 'AI 分析该任务涉及外部依赖，建议与研发负责人协调，或重新评估关联里程碑的时间。', 
-    actionText: '调整关联排期' 
-  }
-]);
+const loadHealth = async () => {
+  health.value = await api.getHealth(route.params.id);
+};
+
+onMounted(loadHealth);
 
 // 辅助格式化函数
 const getSeverityType = (s) => ({ 'critical': 'danger', 'high': 'warning', 'medium': 'info' }[s] || 'info');
@@ -150,10 +153,13 @@ const getSeverityText = (s) => ({ 'critical': '致命', 'high': '严重', 'mediu
 // 交互逻辑
 const recalculate = () => {
   isCalculating.value = true;
-  setTimeout(() => {
+  loadHealth().then(() => {
     isCalculating.value = false;
     ElMessage.success('全量扫描完成！数据已更新。');
-  }, 2500);
+  }).catch(error => {
+    isCalculating.value = false;
+    ElMessage.error(error.message || '健康度扫描失败');
+  });
 };
 
 const handleAction = (actionName) => {
