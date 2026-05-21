@@ -73,7 +73,8 @@ func (s *DefectService) CreateDefect(ctx context.Context, input CreateDefectInpu
 		Description: finalDescription,
 		Status:      domain.DefectStatusPendingFix, // 初始状态为待修复
 		TestRunID:   input.TestRunID,
-		CreatedBy:   input.CreatedBy,
+		CreatedBy:   "", // 暂时留空，后续可以从认证上下文获取
+		AssignedTo:  "", // 暂时留空
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}

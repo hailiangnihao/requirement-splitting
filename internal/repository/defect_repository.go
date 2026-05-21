@@ -26,7 +26,7 @@ func NewPGDefectRepository(pool *pgxpool.Pool) DefectRepository {
 func (r *pgDefectRepository) CreateDefect(ctx context.Context, defect domain.Defect) (domain.Defect, error) {
 	row := r.pool.QueryRow(ctx, `
 		INSERT INTO defects (id, project_id, title, description, status, test_run_id, created_by, assigned_to, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), NULLIF($7, '')::uuid, NULLIF($8, '')::uuid, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::uuid, NULLIF($7, '')::uuid, NULLIF($8, '')::uuid, $9, $10)
 		RETURNING id::text, project_id::text, title, description, status, test_run_id::text, created_by::text, assigned_to::text, created_at, updated_at
 	`, defect.ID, defect.ProjectID, defect.Title, defect.Description, defect.Status, defect.TestRunID, defect.CreatedBy, defect.AssignedTo, defect.CreatedAt, defect.UpdatedAt)
 

@@ -222,8 +222,8 @@ const handleCreateDefect = () => {
     try {
       await api.createDefect(route.params.id, {
         title: value.trim(),
-        description: '通过前端创建的缺陷',
-        created_by: 'user'
+        description: '通过前端创建的缺陷'
+        // 不传 created_by，让后端处理
       });
       await loadBugs();
       ElMessage.success('缺陷创建成功');
