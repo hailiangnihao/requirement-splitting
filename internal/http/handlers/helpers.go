@@ -12,9 +12,7 @@ import (
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	_ = json.NewEncoder(w).Encode(payload) // 忽略编码错误，避免重复调用 WriteHeader
 }
 
 // writeError 写入错误响应

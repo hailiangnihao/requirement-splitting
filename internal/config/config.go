@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -17,6 +19,9 @@ type Config struct {
 }
 
 func Load() Config {
+	// 尝试加载 .env 文件
+	_ = godotenv.Load()
+
 	return Config{
 		Addr:        env("APP_ADDR", ":8080"),
 		DatabaseURL: env("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/reqsplit?sslmode=disable"),

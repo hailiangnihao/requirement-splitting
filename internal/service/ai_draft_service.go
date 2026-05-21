@@ -80,6 +80,85 @@ func (s *AIDraftService) SplitRequirement(ctx context.Context, input SplitRequir
 	})
 }
 
+// SplitRequirementStream 流式拆分需求，实时返回进度
+func (s *AIDraftService) SplitRequirementStream(ctx context.Context, input SplitRequirementInput, progressCallback func(interface{})) (domain.AIDraft, error) {
+	if strings.TrimSpace(input.ProjectID) == "" {
+		return domain.AIDraft{}, fieldError("project id is required")
+	}
+	if strings.TrimSpace(input.Content) == "" {
+		return domain.AIDraft{}, fieldError("content is required")
+	}
+
+	taskInput := ai.TaskInput{
+		Type:      ai.TaskSplitRequirement,
+		ProjectID: input.ProjectID,
+		Payload: map[string]any{
+			"requirement_id": input.RequirementID,
+			"content":        input.Content,
+		},
+	}
+
+	// 检查provider是否支持流式
+	streamProvider, ok := s.provider.(interface {
+		RunStream(context.Context, ai.TaskInput, func(ai.StreamProgress)) (ai.TaskOutput, error)
+	})
+	if !ok {
+		// 不支持流式，降级到普通调用
+		output, err := s.provider.Run(ctx, taskInput)
+		if err != nil {
+			return domain.AIDraft{}, err
+		}
+		return s.saveDraft(ctx, input, taskInput, output)
+	}
+
+	// 流式调用
+	output, err := streamProvider.RunStream(ctx, taskInput, func(progress ai.StreamProgress) {
+		if progressCallback != nil {
+			progressCallback(progress)
+		}
+	})
+	if err != nil {
+		return domain.AIDraft{}, err
+	}
+
+	return s.saveDraft(ctx, input, taskInput, output)
+}
+
+// saveDraft 保存草稿
+func (s *AIDraftService) saveDraft(ctx context.Context, input SplitRequirementInput, taskInput ai.TaskInput, output ai.TaskOutput) (domain.AIDraft, error) {
+	inputJSON, err := json.Marshal(taskInput)
+	if err != nil {
+		return domain.AIDraft{}, err
+	}
+	outputJSON, err := json.Marshal(output.Result)
+	if err != nil {
+		return domain.AIDraft{}, err
+	}
+	validationErrors := validateSplitRequirementOutput(output.Result)
+	validationJSON, err := json.Marshal(validationErrors)
+	if err != nil {
+		return domain.AIDraft{}, err
+	}
+
+	status := domain.AIDraftStatusValidated
+	if len(validationErrors) > 0 {
+		status = domain.AIDraftStatusInvalid
+	}
+
+	return s.repo.CreateAIDraft(ctx, domain.AIDraft{
+		ProjectID:        input.ProjectID,
+		RequirementID:    input.RequirementID,
+		TaskType:         string(ai.TaskSplitRequirement),
+		Provider:         "openai",
+		Model:            "glm-4.5-air",
+		InputJSON:        inputJSON,
+		OutputJSON:       outputJSON,
+		ValidationErrors: validationJSON,
+		Status:           status,
+		CreatedBy:        input.CreatedBy,
+	})
+}
+
 func (s *AIDraftService) ListDrafts(ctx context.Context, projectID string) ([]domain.AIDraft, error) {
 	if strings.TrimSpace(projectID) == "" {
 		return nil, fieldError("project id is required")

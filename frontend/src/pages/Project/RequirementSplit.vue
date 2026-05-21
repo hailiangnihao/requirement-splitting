@@ -51,8 +51,22 @@
         </div>
       </div>
 
-      <div class="tree-container" v-loading="isSplitting" element-loading-text="AI 正在深度思考和拆分中...">
+      <div class="tree-container" v-loading="isSplitting" :element-loading-text="progressMessage || 'AI 正在深度思考和拆分中...'">
         <el-empty v-if="!hasResult && !isSplitting" description="暂无拆分结果，请在左侧输入需求并点击拆分" />
+
+        <!-- AI思考过程展示 -->
+        <div v-if="showThinking && thinkingProcess" class="thinking-box">
+          <div class="thinking-header">
+            <el-icon class="thinking-icon"><Cpu /></el-icon>
+            <span>AI 思考过程</span>
+            <el-button link type="primary" size="small" @click="showThinking = !showThinking">
+              {{ showThinking ? '收起' : '展开' }}
+            </el-button>
+          </div>
+          <div class="thinking-content" v-if="showThinking">
+            <pre>{{ thinkingProcess }}</pre>
+          </div>
+        </div>
 
         <!-- 使用卡片式布局替代树形结构 -->
         <div v-if="hasResult" class="plan-cards">
@@ -117,8 +131,8 @@
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { MagicStick, FolderOpened, Edit, Delete } from '@element-plus/icons-vue';
-import { api } from '../../api/client';
+import { MagicStick, FolderOpened, Edit, Delete, Cpu } from '@element-plus/icons-vue';
+import { api, baseURL } from '../../api/client';
 
 const route = useRoute();
 const router = useRouter();
@@ -128,6 +142,10 @@ const isSplitting = ref(false);
 const hasResult = ref(false);
 const treeData = ref([]);
 const currentDraftId = ref('');
+const progressMessage = ref(''); // 进度消息
+const thinkingProcess = ref(''); // AI思考过程
+const showThinking = ref(false); // 是否显示思考过程
+const generatedContent = ref(''); // 已生成的内容
 
 const defaultProps = { children: 'children', label: 'label' };
 
@@ -194,27 +212,123 @@ const handleAiSplit = async () => {
     return;
   }
   const projectId = route.params.id;
+
+  // 重置状态
   isSplitting.value = true;
   hasResult.value = false;
+  progressMessage.value = '准备中...';
+  thinkingProcess.value = '';
+  generatedContent.value = '';
+  showThinking.value = true; // 默认展开思考过程
+
   try {
+    // 先创建需求
     const requirement = await api.createRequirement(projectId, {
       title: '原始需求',
       content: rawRequirement.value,
       source_type: 'manual'
     });
-    const draft = await api.splitRequirement(projectId, {
+
+    // 使用流式API
+    await splitWithStream(projectId, {
       requirement_id: requirement.id,
       content: rawRequirement.value
     });
-    currentDraftId.value = draft.id;
-    treeData.value = buildTreeFromDraft(draft.output_json || {});
-    hasResult.value = true;
-    ElMessage.success('AI 拆分完成，已生成拆分草稿，请人工确认');
+
   } catch (error) {
     ElMessage.error(error.message || 'AI 拆分失败');
-  } finally {
     isSplitting.value = false;
   }
+};
+
+// 流式拆分
+const splitWithStream = async (projectId, payload) => {
+  return new Promise((resolve, reject) => {
+    // 由于EventSource不支持POST，我们使用fetch来处理SSE
+    fetch(`${baseURL}/api/projects/${projectId}/ai/split-requirement/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    })
+    .then(response => {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      function read() {
+        reader.read().then(({ done, value }) => {
+          if (done) {
+            isSplitting.value = false;
+            resolve();
+            return;
+          }
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          lines.forEach(line => {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.substring(6));
+
+                if (data.type === 'progress') {
+                  progressMessage.value = data.message;
+                } else if (data.type === 'thinking') {
+                  // 更新思考过程
+                  thinkingProcess.value = data.thinking;
+                  progressMessage.value = data.message;
+                } else if (data.type === 'content') {
+                  // 更新生成的内容
+                  generatedContent.value = data.content;
+                  progressMessage.value = data.message;
+
+                  // 尝试实时解析JSON并更新树
+                  try {
+                    const partialData = JSON.parse(data.content);
+                    if (partialData.modules || partialData.milestones) {
+                      treeData.value = buildTreeFromDraft(partialData);
+                      hasResult.value = true;
+                    }
+                  } catch (e) {
+                    // JSON还不完整，忽略错误
+                  }
+                } else if (data.type === 'result' || data.type === 'complete') {
+                  // 最终结果
+                  if (data.data) {
+                    treeData.value = buildTreeFromDraft(data.data);
+                    hasResult.value = true;
+                  }
+                  if (data.type === 'complete') {
+                    if (data.data?.id) {
+                      currentDraftId.value = data.data.id;
+                    }
+                    ElMessage.success('AI 拆分完成，已生成拆分草稿，请人工确认');
+                    isSplitting.value = false;
+                  }
+                } else if (data.type === 'error') {
+                  ElMessage.error(data.message);
+                  isSplitting.value = false;
+                  reject(new Error(data.message));
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE data:', e);
+              }
+            }
+          });
+
+          read();
+        });
+      }
+
+      read();
+    })
+    .catch(error => {
+      ElMessage.error('连接失败: ' + error.message);
+      isSplitting.value = false;
+      reject(error);
+    });
+  });
 };
 
 const resetTree = () => {
@@ -414,6 +528,59 @@ const handleFileUpload = (file) => {
   border: 1px solid #ebeef5;
   border-radius: 4px;
   padding: 16px;
+}
+
+/* AI思考过程展示样式 */
+.thinking-box {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 6px rgba(102, 126, 234, 0.2);
+  animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.thinking-icon {
+  font-size: 20px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.thinking-content {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.thinking-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #303133;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
 /* 卡片式布局样式 */
