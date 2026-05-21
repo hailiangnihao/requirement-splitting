@@ -127,6 +127,41 @@ func (s *PlanPublishService) GetProjectPlan(ctx context.Context, projectID strin
 	return s.planRepo.GetPlan(ctx, projectID)
 }
 
+func (s *PlanPublishService) ListTestCases(ctx context.Context, projectID string) ([]domain.TestCase, error) {
+	if projectID == "" {
+		return nil, fieldError("project id is required")
+	}
+	plan, err := s.planRepo.GetPlan(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return plan.TestCases, nil
+}
+
+func (s *PlanPublishService) ListDevTasks(ctx context.Context, projectID string) ([]domain.DevTask, error) {
+	if projectID == "" {
+		return nil, fieldError("project id is required")
+	}
+	plan, err := s.planRepo.GetPlan(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return plan.DevTasks, nil
+}
+
+func (s *PlanPublishService) UpdateDevTaskStatus(ctx context.Context, projectID, taskID string, status domain.TaskStatus) error {
+	if projectID == "" || taskID == "" {
+		return fieldError("project id and task id are required")
+	}
+	switch status {
+	case domain.TaskStatusPendingDev, domain.TaskStatusDeveloping, domain.TaskStatusPendingTest,
+		domain.TaskStatusTesting, domain.TaskStatusPendingCheck, domain.TaskStatusAccepted, domain.TaskStatusLaunched:
+		return s.planRepo.UpdateDevTaskStatus(ctx, projectID, taskID, status)
+	default:
+		return fieldError("invalid task status")
+	}
+}
+
 // generateSimpleID 生成一个简易的 ID，实际项目中建议使用 google/uuid 库生成标准 UUID
 func generateSimpleID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())

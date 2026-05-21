@@ -29,6 +29,13 @@ func (s *TestService) ConfirmTestCase(ctx context.Context, projectID, testCaseID
 	return s.testRepo.ConfirmTestCase(ctx, projectID, testCaseID)
 }
 
+func (s *TestService) ListTestRuns(ctx context.Context, projectID string) ([]domain.TestRun, error) {
+	if projectID == "" {
+		return nil, fieldError("project id is required")
+	}
+	return s.testRepo.ListTestRuns(ctx, projectID)
+}
+
 // RunAITest 触发 AI 执行指定的测试用例
 func (s *TestService) RunAITest(ctx context.Context, projectID, testCaseID string) (domain.TestRun, error) {
 	// 1. 获取测试用例详情

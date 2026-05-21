@@ -11,7 +11,9 @@ import (
 type ChangeRepository interface {
 	CreateChangeRequest(ctx context.Context, cr domain.ChangeRequest) (domain.ChangeRequest, error)
 	GetChangeRequest(ctx context.Context, id string) (domain.ChangeRequest, error)
+	ListChangeRequests(ctx context.Context, projectID string) ([]domain.ChangeRequest, error)
 	UpdateChangeAnalysis(ctx context.Context, projectID, id string, analysis []byte, status domain.ChangeRequestStatus) error
+	UpdateChangeStatus(ctx context.Context, projectID, id string, status domain.ChangeRequestStatus) error
 }
 
 type pgChangeRepository struct {
@@ -66,6 +68,43 @@ func (r *pgChangeRepository) GetChangeRequest(ctx context.Context, id string) (d
 
 func (r *pgChangeRepository) UpdateChangeAnalysis(ctx context.Context, projectID, id string, analysis []byte, status domain.ChangeRequestStatus) error {
 	cmdTag, err := r.pool.Exec(ctx, "UPDATE change_requests SET impact_analysis = $1, status = $2, updated_at = NOW() WHERE id = $3 AND project_id = $4", analysis, string(status), id, projectID)
+	if err == nil && cmdTag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (r *pgChangeRepository) ListChangeRequests(ctx context.Context, projectID string) ([]domain.ChangeRequest, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id::text, project_id::text, title, content, status, impact_analysis, created_by::text, created_at, updated_at
+		FROM change_requests
+		WHERE project_id = $1
+		ORDER BY created_at DESC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	changes := make([]domain.ChangeRequest, 0)
+	for rows.Next() {
+		var cr domain.ChangeRequest
+		var createdBy *string
+		var analysisBytes []byte
+		if err := rows.Scan(&cr.ID, &cr.ProjectID, &cr.Title, &cr.Content, &cr.Status, &analysisBytes, &createdBy, &cr.CreatedAt, &cr.UpdatedAt); err != nil {
+			return nil, err
+		}
+		cr.ImpactAnalysis = analysisBytes
+		if createdBy != nil {
+			cr.CreatedBy = *createdBy
+		}
+		changes = append(changes, cr)
+	}
+	return changes, rows.Err()
+}
+
+func (r *pgChangeRepository) UpdateChangeStatus(ctx context.Context, projectID, id string, status domain.ChangeRequestStatus) error {
+	cmdTag, err := r.pool.Exec(ctx, "UPDATE change_requests SET status = $1, updated_at = NOW() WHERE id = $2 AND project_id = $3", string(status), id, projectID)
 	if err == nil && cmdTag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

@@ -14,6 +14,7 @@ type PlanRepository interface {
 	PublishPlan(ctx context.Context, plan *domain.FormalPlan) error
 	// GetPlan 根据项目 ID 获取该项目下所有的正式计划数据（扁平结构）
 	GetPlan(ctx context.Context, projectID string) (*domain.FormalPlan, error)
+	UpdateDevTaskStatus(ctx context.Context, projectID, taskID string, status domain.TaskStatus) error
 }
 
 type pgPlanRepository struct {
@@ -204,4 +205,19 @@ func (r *pgPlanRepository) GetPlan(ctx context.Context, projectID string) (*doma
 	accRows.Close()
 
 	return plan, nil
+}
+
+func (r *pgPlanRepository) UpdateDevTaskStatus(ctx context.Context, projectID, taskID string, status domain.TaskStatus) error {
+	cmdTag, err := r.pool.Exec(ctx, `
+		UPDATE dev_tasks
+		SET status = $1
+		WHERE id = $2 AND project_id = $3
+	`, string(status), taskID, projectID)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

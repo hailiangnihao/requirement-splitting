@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -121,4 +122,39 @@ func (h *PlanHandler) GetPlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *PlanHandler) ListDevTasks(w http.ResponseWriter, r *http.Request) {
+	tasks, err := h.publishService.ListDevTasks(r.Context(), chi.URLParam(r, "project_id"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
+func (h *PlanHandler) ListTestCases(w http.ResponseWriter, r *http.Request) {
+	testCases, err := h.publishService.ListTestCases(r.Context(), chi.URLParam(r, "project_id"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, testCases)
+}
+
+type updateDevTaskStatusRequest struct {
+	Status string `json:"status"`
+}
+
+func (h *PlanHandler) UpdateDevTaskStatus(w http.ResponseWriter, r *http.Request) {
+	var req updateDevTaskStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json body")
+		return
+	}
+	if err := h.publishService.UpdateDevTaskStatus(r.Context(), chi.URLParam(r, "project_id"), chi.URLParam(r, "id"), domain.TaskStatus(req.Status)); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "dev task status updated"})
 }

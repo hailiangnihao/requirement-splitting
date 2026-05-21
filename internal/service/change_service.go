@@ -54,6 +54,13 @@ func (s *ChangeService) SubmitChangeRequest(ctx context.Context, input SubmitCha
 	return s.changeRepo.CreateChangeRequest(ctx, cr)
 }
 
+func (s *ChangeService) ListChangeRequests(ctx context.Context, projectID string) ([]domain.ChangeRequest, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("%w: project_id is required", ErrValidation)
+	}
+	return s.changeRepo.ListChangeRequests(ctx, projectID)
+}
+
 // AnalyzeChangeImpact 触发 AI 分析该变更对当前计划的影响面
 func (s *ChangeService) AnalyzeChangeImpact(ctx context.Context, projectID, changeID string) error {
 	// 1. 获取变更申请
@@ -92,6 +99,16 @@ func (s *ChangeService) AnalyzeChangeImpact(ctx context.Context, projectID, chan
 	analysisBytes, _ := json.Marshal(output.Result)
 
 	return s.changeRepo.UpdateChangeAnalysis(ctx, projectID, changeID, analysisBytes, domain.ChangeRequestStatusAnalyzed)
+}
+
+func (s *ChangeService) UpdateChangeStatus(ctx context.Context, projectID, changeID string, status domain.ChangeRequestStatus) error {
+	switch status {
+	case domain.ChangeRequestStatusSubmitted, domain.ChangeRequestStatusAnalyzed, domain.ChangeRequestStatusAccepted,
+		domain.ChangeRequestStatusApplied, domain.ChangeRequestStatusRejected:
+		return s.changeRepo.UpdateChangeStatus(ctx, projectID, changeID, status)
+	default:
+		return fmt.Errorf("%w: invalid change status", ErrValidation)
+	}
 }
 
 // --- 轻量级摘要结构定义 ---

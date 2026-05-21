@@ -12,6 +12,7 @@ type DefectRepository interface {
 	CreateDefect(ctx context.Context, defect domain.Defect) (domain.Defect, error)
 	UpdateDefectStatus(ctx context.Context, projectID, defectID string, status domain.DefectStatus) error
 	GetDefect(ctx context.Context, defectID string) (domain.Defect, error)
+	ListDefects(ctx context.Context, projectID string) ([]domain.Defect, error)
 }
 
 type pgDefectRepository struct {
@@ -83,4 +84,35 @@ func (r *pgDefectRepository) GetDefect(ctx context.Context, defectID string) (do
 		defect.AssignedTo = *assignedTo
 	}
 	return defect, nil
+}
+
+func (r *pgDefectRepository) ListDefects(ctx context.Context, projectID string) ([]domain.Defect, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id::text, project_id::text, title, description, status, test_run_id::text, created_by::text, assigned_to::text, created_at, updated_at
+		FROM defects
+		WHERE project_id = $1
+		ORDER BY created_at DESC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	defects := make([]domain.Defect, 0)
+	for rows.Next() {
+		var defect domain.Defect
+		var testRunID, createdBy, assignedTo *string
+		if err := rows.Scan(&defect.ID, &defect.ProjectID, &defect.Title, &defect.Description, &defect.Status, &testRunID, &createdBy, &assignedTo, &defect.CreatedAt, &defect.UpdatedAt); err != nil {
+			return nil, err
+		}
+		defect.TestRunID = testRunID
+		if createdBy != nil {
+			defect.CreatedBy = *createdBy
+		}
+		if assignedTo != nil {
+			defect.AssignedTo = *assignedTo
+		}
+		defects = append(defects, defect)
+	}
+	return defects, rows.Err()
 }

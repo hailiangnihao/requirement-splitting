@@ -29,6 +29,15 @@ func (h *TestHandler) ConfirmTestCase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "test case confirmed"})
 }
 
+func (h *TestHandler) ListTestRuns(w http.ResponseWriter, r *http.Request) {
+	testRuns, err := h.service.ListTestRuns(r.Context(), chi.URLParam(r, "project_id"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, testRuns)
+}
+
 func (h *TestHandler) RunAITest(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "project_id")
 	testCaseID := chi.URLParam(r, "id")

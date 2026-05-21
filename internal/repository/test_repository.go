@@ -13,6 +13,7 @@ type TestRepository interface {
 	ConfirmTestCase(ctx context.Context, projectID, testCaseID string) error
 	ReviewTestRun(ctx context.Context, projectID, testRunID string, status domain.TestRunReviewStatus) error
 	GetTestRun(ctx context.Context, testRunID string) (domain.TestRun, error)
+	ListTestRuns(ctx context.Context, projectID string) ([]domain.TestRun, error)
 }
 
 type pgTestRepository struct {
@@ -83,4 +84,29 @@ func (r *pgTestRepository) ReviewTestRun(ctx context.Context, projectID, testRun
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *pgTestRepository) ListTestRuns(ctx context.Context, projectID string) ([]domain.TestRun, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, project_id, test_case_id, executed_by, execution_type, actual_result, evidence, is_defect_suggested, review_status, created_at
+		FROM test_runs
+		WHERE project_id = $1
+		ORDER BY created_at DESC
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	runs := make([]domain.TestRun, 0)
+	for rows.Next() {
+		var run domain.TestRun
+		var evidenceBytes []byte
+		if err := rows.Scan(&run.ID, &run.ProjectID, &run.TestCaseID, &run.ExecutedBy, &run.ExecutionType, &run.ActualResult, &evidenceBytes, &run.IsDefectSuggested, &run.ReviewStatus, &run.CreatedAt); err != nil {
+			return nil, err
+		}
+		run.Evidence = evidenceBytes
+		runs = append(runs, run)
+	}
+	return runs, rows.Err()
 }

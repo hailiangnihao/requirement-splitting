@@ -48,6 +48,15 @@ func (h *DefectHandler) CreateDefect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, defect)
 }
 
+func (h *DefectHandler) ListDefects(w http.ResponseWriter, r *http.Request) {
+	defects, err := h.service.ListDefects(r.Context(), chi.URLParam(r, "project_id"))
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, defects)
+}
+
 type updateDefectStatusRequest struct {
 	Status string `json:"status"`
 }

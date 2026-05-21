@@ -73,8 +73,22 @@ func (s *DefectService) CreateDefect(ctx context.Context, input CreateDefectInpu
 	return s.defectRepo.CreateDefect(ctx, defect)
 }
 
+func (s *DefectService) ListDefects(ctx context.Context, projectID string) ([]domain.Defect, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return nil, fmt.Errorf("%w: project_id is required", ErrValidation)
+	}
+	return s.defectRepo.ListDefects(ctx, projectID)
+}
+
 // UpdateDefectStatus 变更缺陷状态
 func (s *DefectService) UpdateDefectStatus(ctx context.Context, projectID, defectID string, status domain.DefectStatus) error {
+	switch status {
+	case domain.DefectStatusPendingConfirm, domain.DefectStatusPendingFix, domain.DefectStatusFixing,
+		domain.DefectStatusPendingRegression, domain.DefectStatusRegressionPassed, domain.DefectStatusClosed, domain.DefectStatusRejected:
+	default:
+		return fmt.Errorf("%w: invalid defect status", ErrValidation)
+	}
+
 	err := s.defectRepo.UpdateDefectStatus(ctx, projectID, defectID, status)
 	if err != nil {
 		return err

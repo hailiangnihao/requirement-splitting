@@ -10,7 +10,9 @@ import (
 )
 
 type capturePlanRepository struct {
-	plan *domain.FormalPlan
+	plan         *domain.FormalPlan
+	updatedTask  string
+	updatedState domain.TaskStatus
 }
 
 func (r *capturePlanRepository) PublishPlan(ctx context.Context, plan *domain.FormalPlan) error {
@@ -23,6 +25,12 @@ func (r *capturePlanRepository) GetPlan(ctx context.Context, projectID string) (
 		return &domain.FormalPlan{ProjectID: projectID}, nil
 	}
 	return r.plan, nil
+}
+
+func (r *capturePlanRepository) UpdateDevTaskStatus(ctx context.Context, projectID, taskID string, status domain.TaskStatus) error {
+	r.updatedTask = taskID
+	r.updatedState = status
+	return nil
 }
 
 func TestPublishDraftBuildsFormalPlanFromSplitRequirementDraft(t *testing.T) {
@@ -59,5 +67,24 @@ func TestPublishDraftBuildsFormalPlanFromSplitRequirementDraft(t *testing.T) {
 	}
 	if len(planRepo.plan.AcceptanceItems) == 0 {
 		t.Fatal("expected acceptance items in formal plan")
+	}
+}
+
+func TestUpdateDevTaskStatusValidatesStatus(t *testing.T) {
+	planRepo := &capturePlanRepository{}
+	publishService := NewPlanPublishService(repository.NewMemoryAIDraftRepository(), planRepo)
+
+	if err := publishService.UpdateDevTaskStatus(context.Background(), "project-1", "task-1", domain.TaskStatus("bad")); err == nil {
+		t.Fatal("expected invalid status error")
+	}
+
+	if err := publishService.UpdateDevTaskStatus(context.Background(), "project-1", "task-1", domain.TaskStatusDeveloping); err != nil {
+		t.Fatalf("update task status: %v", err)
+	}
+	if planRepo.updatedTask != "task-1" {
+		t.Fatalf("expected task-1 to be updated, got %q", planRepo.updatedTask)
+	}
+	if planRepo.updatedState != domain.TaskStatusDeveloping {
+		t.Fatalf("expected developing status, got %s", planRepo.updatedState)
 	}
 }
