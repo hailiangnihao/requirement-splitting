@@ -73,6 +73,7 @@ func (s *TestService) RunAITest(ctx context.Context, projectID, testCaseID strin
 
 	evidenceBytes, err := json.Marshal(output.Result["evidence"])
 	if err != nil {
+		LogWarn(fmt.Sprintf("failed to marshal evidence for test case %s: %v", testCaseID, err))
 		evidenceBytes = []byte("{}") // 序列化失败时给个默认空 JSON
 	}
 

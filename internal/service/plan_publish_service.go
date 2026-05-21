@@ -162,7 +162,4 @@ func (s *PlanPublishService) UpdateDevTaskStatus(ctx context.Context, projectID,
 	}
 }
 
-// generateSimpleID 生成一个简易的 ID，实际项目中建议使用 google/uuid 库生成标准 UUID
-func generateSimpleID(prefix string) string {
-	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
-}
+// generateSimpleID moved to id_generator.go

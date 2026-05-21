@@ -42,6 +42,14 @@ func (s *DefectService) CreateDefect(ctx context.Context, input CreateDefectInpu
 		return domain.Defect{}, fmt.Errorf("%w: project_id and title are required", ErrValidation)
 	}
 
+	// 输入长度验证
+	if len(input.Title) > 200 {
+		return domain.Defect{}, fmt.Errorf("%w: title too long (max 200 chars)", ErrValidation)
+	}
+	if len(input.Description) > 5000 {
+		return domain.Defect{}, fmt.Errorf("%w: description too long (max 5000 chars)", ErrValidation)
+	}
+
 	finalDescription := input.Description
 
 	// 【核心体验增强】如果关联了 TestRun，自动追加 AI 抓取的现场证据
@@ -103,7 +111,9 @@ func (s *DefectService) UpdateDefectStatus(ctx context.Context, projectID, defec
 			if err == nil && testRun.TestCaseID != "" {
 				// 使用 go func 异步触发，不阻塞当前的 HTTP 响应
 				go func() {
-					bgCtx := context.Background() // 脱离原 HTTP 请求的上下文生命周期
+					// 添加超时控制，防止 goroutine 泄漏
+					bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+					defer cancel()
 					_, _ = s.testRunner.RunAITest(bgCtx, projectID, testRun.TestCaseID)
 				}()
 			}

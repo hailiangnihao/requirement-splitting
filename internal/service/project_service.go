@@ -30,6 +30,17 @@ func (s *ProjectService) CreateProject(ctx context.Context, input CreateProjectI
 		return domain.Project{}, fieldError("name is required")
 	}
 
+	// 输入长度验证
+	if len(name) > 100 {
+		return domain.Project{}, fieldError("project name too long (max 100 chars)")
+	}
+	if len(input.Objective) > 500 {
+		return domain.Project{}, fieldError("objective too long (max 500 chars)")
+	}
+	if len(input.Scope) > 1000 {
+		return domain.Project{}, fieldError("scope too long (max 1000 chars)")
+	}
+
 	project, err := s.repo.CreateProject(ctx, domain.Project{
 		Name:      name,
 		Objective: strings.TrimSpace(input.Objective),

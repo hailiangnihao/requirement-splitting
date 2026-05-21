@@ -39,6 +39,14 @@ func (s *ChangeService) SubmitChangeRequest(ctx context.Context, input SubmitCha
 		return domain.ChangeRequest{}, fmt.Errorf("%w: project_id and content are required", ErrValidation)
 	}
 
+	// 输入长度验证
+	if len(input.Title) > 200 {
+		return domain.ChangeRequest{}, fmt.Errorf("%w: title too long (max 200 chars)", ErrValidation)
+	}
+	if len(input.Content) > 5000 {
+		return domain.ChangeRequest{}, fmt.Errorf("%w: content too long (max 5000 chars)", ErrValidation)
+	}
+
 	now := time.Now()
 	cr := domain.ChangeRequest{
 		ID:        generateSimpleID("change"),
