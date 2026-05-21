@@ -34,7 +34,13 @@
         <div :class="['card-cover', project.coverStyle]">
           <div class="cover-content">
             <h3>{{ project.name }}</h3>
-            <el-tag :type="getStatusType(project.status)" size="small" effect="dark" class="status-tag">
+            <el-tag
+              :type="getStatusType(project.status)"
+              size="small"
+              effect="dark"
+              class="status-tag clickable"
+              @click.stop="changeProjectStatus(project)"
+            >
               {{ project.status }}
             </el-tag>
           </div>
@@ -191,6 +197,7 @@ const normalizeProject = (project, index = 0) => ({
   name: project.name,
   manager: project.owner_id || 'PM',
   status: getStatusText(project.status),
+  rawStatus: project.status,
   progress: project.status === 'accepted' || project.status === 'launched' ? 100 : 0,
   health: getHealthValue(project.health),
   coverStyle: ['gradient-blue', 'gradient-purple', 'gradient-orange', 'gradient-green'][index % 4],
@@ -274,6 +281,46 @@ const goToProject = (id) => {
   router.push(`/project/${id}/overview`);
 };
 
+// 修改项目状态
+const changeProjectStatus = (project) => {
+  const statusOptions = [
+    { label: '待开始', value: 'planning' },
+    { label: '进行中', value: 'active' },
+    { label: '已暂停', value: 'paused' },
+    { label: '已验收', value: 'accepted' },
+    { label: '已上线', value: 'launched' },
+    { label: '已归档', value: 'archived' }
+  ];
+
+  ElMessageBox({
+    title: '修改项目状态',
+    message: h('div', { style: 'padding: 20px 0' }, [
+      h('p', { style: 'margin-bottom: 12px; color: #606266' }, `当前状态：${project.status}`),
+      h('el-radio-group', {
+        modelValue: project.rawStatus,
+        'onUpdate:modelValue': (val) => {
+          project.rawStatus = val;
+        }
+      }, statusOptions.map(opt =>
+        h('el-radio', {
+          label: opt.value,
+          style: 'display: block; margin: 8px 0'
+        }, opt.label)
+      ))
+    ]),
+    showCancelButton: true,
+    confirmButtonText: '确定',
+    cancelButtonText: '取消'
+  }).then(() => {
+    // TODO: 调用 API 更新项目状态
+    // api.updateProjectStatus(project.id, project.rawStatus)
+    project.status = getStatusText(project.rawStatus);
+    ElMessage.success('项目状态已更新');
+  }).catch(() => {
+    // 用户取消
+  });
+};
+
 // 辅助格式化
 const getStatusValue = (status) => ({ '待开始': 'pending', '进行中': 'doing', '已暂停': 'paused', '已验收': 'accepted', '已上线': 'done', '已归档': 'done' }[status] || '');
 const getStatusType = (status) => ({ '待开始': 'info', '进行中': 'primary', '已暂停': 'warning', '已验收': 'success', '已上线': 'success', '已归档': 'info' }[status] || 'info');
@@ -306,6 +353,8 @@ const formatTime = (value) => value ? new Date(value).toLocaleString() : '-';
 .cover-content { width: 100%; display: flex; justify-content: space-between; align-items: center; }
 .cover-content h3 { margin: 0; font-size: 18px; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; margin-right: 12px; }
 .status-tag { box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+.status-tag.clickable { cursor: pointer; transition: all 0.2s; }
+.status-tag.clickable:hover { transform: scale(1.05); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
 
 .card-body { padding: 20px; flex: 1; }
 .info-row { font-size: 14px; color: #606266; margin-bottom: 16px; display: flex; align-items: center; }

@@ -63,22 +63,22 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 	moduleIDsByKey := make(map[string]string)
 	featurePointIDsByKey := make(map[string]string)
 
-	for i, m := range outData.Modules {
-		modID := generateSimpleID(fmt.Sprintf("mod-%d", i))
+	for _, m := range outData.Modules {
+		modID := generateID()
 		moduleIDsByKey[m.Key] = modID
 		plan.Modules = append(plan.Modules, domain.Module{
 			ID: modID, ProjectID: projectID, Name: m.Name, Description: m.Description, CreatedAt: now,
 		})
 	}
 
-	for i, ms := range outData.Milestones {
+	for _, ms := range outData.Milestones {
 		plan.Milestones = append(plan.Milestones, domain.Milestone{
-			ID: generateSimpleID(fmt.Sprintf("ms-%d", i)), ProjectID: projectID, Name: ms.Name, Description: ms.Description, CreatedAt: now,
+			ID: generateID(), ProjectID: projectID, Name: ms.Name, Description: ms.Description, CreatedAt: now,
 		})
 	}
 
-	for i, fp := range outData.FeaturePoints {
-		fpID := generateSimpleID(fmt.Sprintf("fp-%d", i))
+	for _, fp := range outData.FeaturePoints {
+		fpID := generateID()
 		featurePointIDsByKey[fp.Key] = fpID
 		plan.FeaturePoints = append(plan.FeaturePoints, domain.FeaturePoint{
 			ID:          fpID,
@@ -90,9 +90,9 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 		})
 	}
 
-	for i, task := range outData.DevTasks {
+	for _, task := range outData.DevTasks {
 		plan.DevTasks = append(plan.DevTasks, domain.DevTask{
-			ID:             generateSimpleID(fmt.Sprintf("task-%d", i)),
+			ID:             generateID(),
 			ProjectID:      projectID,
 			FeaturePointID: featurePointIDsByKey[task.FeaturePointKey],
 			Name:           task.Title,
@@ -101,9 +101,9 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 		})
 	}
 
-	for i, tc := range outData.TestCases {
+	for _, tc := range outData.TestCases {
 		plan.TestCases = append(plan.TestCases, domain.TestCase{
-			ID:                 generateSimpleID(fmt.Sprintf("tc-%d", i)),
+			ID:                 generateID(),
 			ProjectID:          projectID,
 			FeaturePointID:     featurePointIDsByKey[tc.FeaturePointKey],
 			Title:              tc.Title,
@@ -112,9 +112,9 @@ func (s *PlanPublishService) PublishDraft(ctx context.Context, projectID, draftI
 		})
 	}
 
-	for i, acc := range outData.AcceptanceItems {
+	for _, acc := range outData.AcceptanceItems {
 		plan.AcceptanceItems = append(plan.AcceptanceItems, domain.AcceptanceItem{
-			ID: generateSimpleID(fmt.Sprintf("acc-%d", i)), ProjectID: projectID, Description: acc.PassCriteria, CreatedAt: now,
+			ID: generateID(), ProjectID: projectID, Description: acc.PassCriteria, CreatedAt: now,
 		})
 	}
 

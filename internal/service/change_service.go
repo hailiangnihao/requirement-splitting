@@ -49,7 +49,7 @@ func (s *ChangeService) SubmitChangeRequest(ctx context.Context, input SubmitCha
 
 	now := time.Now()
 	cr := domain.ChangeRequest{
-		ID:        generateSimpleID("change"),
+		ID:        generateID(),
 		ProjectID: input.ProjectID,
 		Title:     input.Title,
 		Content:   input.Content,

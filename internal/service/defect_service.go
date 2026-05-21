@@ -67,7 +67,7 @@ func (s *DefectService) CreateDefect(ctx context.Context, input CreateDefectInpu
 
 	now := time.Now()
 	defect := domain.Defect{
-		ID:          generateSimpleID("defect"), // 复用之前定义的 generateSimpleID
+		ID:          generateID(),
 		ProjectID:   input.ProjectID,
 		Title:       input.Title,
 		Description: finalDescription,

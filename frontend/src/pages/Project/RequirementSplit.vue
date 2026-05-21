@@ -4,7 +4,14 @@
     <div class="left-panel">
       <div class="panel-header">
         <h3>原始需求</h3>
-        <el-button type="primary" plain size="small">上传文档 (Word/PDF)</el-button>
+        <el-upload
+          :auto-upload="false"
+          :show-file-list="false"
+          accept=".doc,.docx,.pdf,.txt"
+          :on-change="handleFileUpload"
+        >
+          <el-button type="primary" plain size="small">上传文档 (Word/PDF)</el-button>
+        </el-upload>
       </div>
       <div class="input-wrapper">
         <el-input
@@ -46,34 +53,61 @@
 
       <div class="tree-container" v-loading="isSplitting" element-loading-text="AI 正在深度思考和拆分中...">
         <el-empty v-if="!hasResult && !isSplitting" description="暂无拆分结果，请在左侧输入需求并点击拆分" />
-        
-        <el-tree
-          v-if="hasResult"
-          :data="treeData"
-          :props="defaultProps"
-          node-key="id"
-          default-expand-all
-          :expand-on-click-node="false"
-        >
-          <template #default="{ node, data }">
-            <div class="custom-tree-node">
-              <div class="node-main">
-                <el-tag :type="getTagType(data.type)" size="small" class="node-tag">
-                  {{ data.type }}
-                </el-tag>
-                <span class="node-label">{{ node.label }}</span>
+
+        <!-- 使用卡片式布局替代树形结构 -->
+        <div v-if="hasResult" class="plan-cards">
+          <div v-for="module in treeData" :key="module.id" class="module-card">
+            <div class="module-header">
+              <div class="module-title">
+                <el-icon><FolderOpened /></el-icon>
+                <span>{{ module.label }}</span>
               </div>
-              <div class="node-extra">
-                <span v-if="data.desc" class="node-desc" :title="data.desc">{{ data.desc }}</span>
-                <!-- 草稿状态下的人工微调操作 -->
-                <div class="node-actions">
-                  <el-button link type="primary" size="small">编辑</el-button>
-                  <el-button link type="danger" size="small">删除</el-button>
+              <div class="module-actions">
+                <el-button link type="primary" size="small" @click="handleEdit(module)">
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+                <el-button link type="danger" size="small" @click="handleDeleteModule(module)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+            </div>
+            <div class="module-desc" v-if="module.desc">{{ module.desc }}</div>
+
+            <!-- 功能点列表 -->
+            <div v-for="feature in module.children" :key="feature.id" class="feature-card">
+              <div class="feature-header">
+                <div class="feature-title">
+                  <el-tag type="success" size="small">功能点</el-tag>
+                  <span>{{ feature.label }}</span>
+                </div>
+                <div class="feature-actions">
+                  <el-button link type="primary" size="small" @click="handleEdit(feature)">编辑</el-button>
+                  <el-button link type="danger" size="small" @click="handleDeleteItem(module, feature)">删除</el-button>
+                </div>
+              </div>
+              <div class="feature-desc" v-if="feature.desc">{{ feature.desc }}</div>
+
+              <!-- 任务和测试用例 -->
+              <div class="items-grid">
+                <div v-for="item in feature.children" :key="item.id" class="item-card">
+                  <div class="item-header">
+                    <el-tag :type="getItemTagType(item.type)" size="small">{{ item.type }}</el-tag>
+                    <div class="item-actions">
+                      <el-button link type="primary" size="small" @click="handleEdit(item)">
+                        <el-icon><Edit /></el-icon>
+                      </el-button>
+                      <el-button link type="danger" size="small" @click="handleDeleteItem(feature, item)">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                  </div>
+                  <div class="item-title">{{ item.label }}</div>
+                  <div class="item-desc" v-if="item.desc">{{ item.desc }}</div>
                 </div>
               </div>
             </div>
-          </template>
-        </el-tree>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -82,8 +116,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
-import { MagicStick } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { MagicStick, FolderOpened, Edit, Delete } from '@element-plus/icons-vue';
 import { api } from '../../api/client';
 
 const route = useRoute();
@@ -213,6 +247,127 @@ const getTagType = (type) => {
   };
   return map[type] || 'info';
 };
+
+// 编辑节点
+const handleEdit = (data) => {
+  ElMessageBox.prompt('', `编辑 ${data.type}`, {
+    confirmButtonText: '保存',
+    cancelButtonText: '取消',
+    inputValue: data.label,
+    inputType: 'textarea',
+    inputPlaceholder: '请输入内容',
+    customClass: 'edit-dialog'
+  }).then(({ value }) => {
+    if (value && value.trim()) {
+      data.label = value.trim();
+      ElMessage.success('修改成功');
+    }
+  }).catch(() => {
+    // 用户取消
+  });
+};
+
+// 删除节点
+const handleDelete = (node, data) => {
+  ElMessageBox.confirm(
+    `确定要删除 ${data.type} "${data.label}" 吗？`,
+    '删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    const parent = node.parent;
+    const children = parent.data.children || parent.data;
+    const index = children.findIndex(d => d.id === data.id);
+    if (index !== -1) {
+      children.splice(index, 1);
+      ElMessage.success('删除成功');
+    }
+  }).catch(() => {
+    // 用户取消
+  });
+};
+
+// 删除模块
+const handleDeleteModule = (module) => {
+  ElMessageBox.confirm(
+    `确定要删除模块 "${module.label}" 及其所有子项吗？`,
+    '删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    const index = treeData.value.findIndex(m => m.id === module.id);
+    if (index !== -1) {
+      treeData.value.splice(index, 1);
+      ElMessage.success('删除成功');
+    }
+  }).catch(() => {});
+};
+
+// 删除子项（功能点、任务、测试用例）
+const handleDeleteItem = (parent, item) => {
+  ElMessageBox.confirm(
+    `确定要删除 "${item.label}" 吗？`,
+    '删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    const index = parent.children.findIndex(c => c.id === item.id);
+    if (index !== -1) {
+      parent.children.splice(index, 1);
+      ElMessage.success('删除成功');
+    }
+  }).catch(() => {});
+};
+
+// 获取标签类型
+const getItemTagType = (type) => {
+  const map = {
+    '开发任务': 'warning',
+    '测试用例': 'info',
+    '验收项': 'danger'
+  };
+  return map[type] || 'info';
+};
+
+// 上传文档
+const handleFileUpload = (file) => {
+  const fileName = file.name;
+  const fileType = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+
+  if (!['doc', 'docx', 'pdf', 'txt'].includes(fileType)) {
+    ElMessage.error('仅支持 Word、PDF 和 TXT 格式');
+    return;
+  }
+
+  // TODO: 实现文档解析功能
+  // 1. 上传文件到后端
+  // 2. 后端解析文档内容（使用 OCR 或文档解析库）
+  // 3. 将解析后的文本填充到输入框
+
+  ElMessage.info({
+    message: '文档上传功能开发中，敬请期待！',
+    duration: 2000
+  });
+
+  // 临时方案：读取文本文件内容
+  if (fileType === 'txt') {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      rawRequirement.value = e.target.result;
+      ElMessage.success('文本文件读取成功');
+    };
+    reader.readAsText(file.raw);
+  }
+};
 </script>
 
 <style scoped>
@@ -260,6 +415,126 @@ const getTagType = (type) => {
   border-radius: 4px;
   padding: 16px;
 }
+
+/* 卡片式布局样式 */
+.plan-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.module-card {
+  background: #fff;
+  border: 2px solid #409EFF;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.module-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #409EFF;
+}
+
+.module-desc {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 16px;
+  padding-left: 28px;
+}
+
+.module-actions, .feature-actions, .item-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.feature-card {
+  background: #f0f9ff;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.feature-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.feature-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.feature-desc {
+  font-size: 12px;
+  color: #606266;
+  margin-bottom: 12px;
+  padding-left: 60px;
+}
+
+.items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.item-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 10px;
+  transition: all 0.2s;
+}
+
+.item-card:hover {
+  border-color: #409EFF;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.item-desc {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 旧的树形样式保留作为备用 */
 .custom-tree-node {
   flex: 1;
   display: flex;
@@ -284,4 +559,10 @@ const getTagType = (type) => {
 }
 .node-actions { display: none; }
 .custom-tree-node:hover .node-actions { display: block; }
+
+/* 编辑对话框样式 */
+:deep(.edit-dialog .el-message-box__input textarea) {
+  min-height: 100px;
+  resize: vertical;
+}
 </style>

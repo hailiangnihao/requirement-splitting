@@ -1,6 +1,6 @@
 -- 模块表
 CREATE TABLE modules (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -9,7 +9,7 @@ CREATE TABLE modules (
 
 -- 里程碑表
 CREATE TABLE milestones (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -18,9 +18,9 @@ CREATE TABLE milestones (
 
 -- 功能点表 (关联模块)
 CREATE TABLE feature_points (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    module_id VARCHAR(100) NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+    module_id UUID NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -28,9 +28,9 @@ CREATE TABLE feature_points (
 
 -- 开发任务表 (关联功能点)
 CREATE TABLE dev_tasks (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    feature_point_id VARCHAR(100) NOT NULL REFERENCES feature_points(id) ON DELETE CASCADE,
+    feature_point_id UUID NOT NULL REFERENCES feature_points(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     status VARCHAR(50) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -38,9 +38,9 @@ CREATE TABLE dev_tasks (
 
 -- 测试用例表 (关联功能点)
 CREATE TABLE test_cases (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    feature_point_id VARCHAR(100) NOT NULL REFERENCES feature_points(id) ON DELETE CASCADE,
+    feature_point_id UUID NOT NULL REFERENCES feature_points(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     confirmation_status VARCHAR(50) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -48,7 +48,7 @@ CREATE TABLE test_cases (
 
 -- 验收检查项表
 CREATE TABLE acceptance_items (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

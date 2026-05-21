@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2>缺陷管理</h2>
       <div class="header-actions">
-        <el-button type="primary" icon="Plus">提缺陷</el-button>
+        <el-button type="primary" icon="Plus" @click="handleCreateDefect">提缺陷</el-button>
       </div>
     </div>
 
@@ -204,6 +204,35 @@ const loadBugs = async () => {
   } catch (error) {
     ElMessage.error(error.message || '缺陷列表加载失败');
   }
+};
+
+// 创建缺陷
+const handleCreateDefect = () => {
+  ElMessageBox.prompt('请输入缺陷标题', '创建缺陷', {
+    confirmButtonText: '创建',
+    cancelButtonText: '取消',
+    inputPlaceholder: '例如：登录按钮点击无响应',
+    inputValidator: (value) => {
+      if (!value || !value.trim()) {
+        return '缺陷标题不能为空';
+      }
+      return true;
+    }
+  }).then(async ({ value }) => {
+    try {
+      await api.createDefect(route.params.id, {
+        title: value.trim(),
+        description: '通过前端创建的缺陷',
+        created_by: 'user'
+      });
+      await loadBugs();
+      ElMessage.success('缺陷创建成功');
+    } catch (error) {
+      ElMessage.error(error.message || '缺陷创建失败');
+    }
+  }).catch(() => {
+    // 用户取消
+  });
 };
 
 onMounted(loadBugs);

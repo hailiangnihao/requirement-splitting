@@ -1,6 +1,5 @@
--- 需求变更申请表
 CREATE TABLE change_requests (
-    id VARCHAR(100) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,

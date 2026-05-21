@@ -79,7 +79,7 @@ func (s *TestService) RunAITest(ctx context.Context, projectID, testCaseID strin
 
 	// 5. 组装 TestRun 记录
 	testRun := domain.TestRun{
-		ID:                generateSimpleID("testrun"),
+		ID:                generateID(),
 		ProjectID:         projectID,
 		TestCaseID:        testCaseID,
 		ExecutedBy:        "AI",

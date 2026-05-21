@@ -50,6 +50,7 @@
             draggable="true"
             @dragstart="onDragStart($event, task)"
             @dragend="onDragEnd"
+            @click="showTaskDetail(task)"
           >
             <div class="task-header">
               <span class="task-id">{{ task.id }}</span>
@@ -76,6 +77,46 @@
         </div>
       </div>
     </div>
+
+    <!-- 任务详情抽屉 -->
+    <el-drawer
+      v-model="drawerVisible"
+      :title="`任务详情 - ${currentTask?.id}`"
+      size="600px"
+      destroy-on-close
+    >
+      <template v-if="currentTask">
+        <div class="drawer-section">
+          <h3 class="task-detail-title">{{ currentTask.title }}</h3>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="任务ID">{{ currentTask.id }}</el-descriptions-item>
+            <el-descriptions-item label="优先级">
+              <el-tag :type="getPriorityType(currentTask.priority)" size="small">
+                {{ getPriorityLabel(currentTask.priority) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="当前状态">
+              <el-tag type="primary">{{ getStatusLabel(currentTask.status) }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="负责人">{{ currentTask.assignee }}</el-descriptions-item>
+            <el-descriptions-item label="关联功能点" :span="2">
+              {{ currentTask.feature }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </div>
+
+        <div class="drawer-section">
+          <h4>任务描述</h4>
+          <div class="info-box">
+            <p>{{ currentTask.description || '暂无描述' }}</p>
+          </div>
+        </div>
+
+        <div class="drawer-footer">
+          <el-button type="primary" @click="drawerVisible = false">关闭</el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -98,6 +139,8 @@ const columns = [
 ];
 
 const tasks = ref([]);
+const drawerVisible = ref(false);
+const currentTask = ref(null);
 
 // 过滤状态
 const searchKey = ref('');
@@ -179,6 +222,17 @@ const getPriorityLabel = (p) => {
   const map = { high: '高', medium: '中', low: '低' };
   return map[p] || '未知';
 };
+
+const getStatusLabel = (status) => {
+  const col = columns.find(c => c.status === status);
+  return col ? col.label : status;
+};
+
+// 显示任务详情
+const showTaskDetail = (task) => {
+  currentTask.value = { ...task };
+  drawerVisible.value = true;
+};
 </script>
 
 <style scoped>
@@ -247,4 +301,11 @@ const getPriorityLabel = (p) => {
 .assignee-avatar { background: #0052cc; color: #fff; font-size: 12px; }
 
 .empty-placeholder { text-align: center; color: #a5adba; font-size: 12px; padding: 20px 0; border: 2px dashed #dfe1e6; border-radius: 4px; margin-top: 4px; }
+
+.drawer-section { margin-bottom: 24px; }
+.drawer-section h3 { margin: 0 0 16px 0; font-size: 18px; color: #1f2f3d; }
+.drawer-section h4 { margin: 0 0 12px 0; font-size: 15px; color: #303133; }
+.task-detail-title { margin: 0 0 16px 0; font-size: 18px; color: #1f2f3d; }
+.info-box { background: #f8f9fa; padding: 16px; border-radius: 4px; font-size: 14px; color: #606266; line-height: 1.6; border: 1px solid #ebeef5; }
+.drawer-footer { margin-top: 32px; display: flex; justify-content: flex-end; }
 </style>

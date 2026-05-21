@@ -49,7 +49,7 @@ func (h *PlanHandler) PublishDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.publishService.PublishDraft(r.Context(), projectID, draftID); err != nil {
-		writeServiceError(w, err) // 使用统一的 service 错误处理
+		writeServiceError(w, err)
 		return
 	}
 

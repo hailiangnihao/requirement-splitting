@@ -71,7 +71,38 @@
 
       <!-- Tab 2: 验收检查项 -->
       <el-tab-pane label="验收检查项" name="acceptance">
-        <el-empty description="验收检查项模块开发中..." />
+        <div class="acceptance-list">
+          <el-table :data="acceptanceItems" style="width: 100%" border>
+            <el-table-column type="index" label="序号" width="60" />
+            <el-table-column prop="description" label="验收项描述" min-width="300" show-overflow-tooltip />
+            <el-table-column label="验收状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="row.passed ? 'success' : 'info'">
+                  {{ row.passed ? '已通过' : '待验收' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="关联功能点" width="200" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ row.feature || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="!row.passed"
+                  type="success"
+                  link
+                  size="small"
+                  @click="markAcceptancePassed(row)"
+                >
+                  标记通过
+                </el-button>
+                <el-tag v-else type="success" size="small">已完成</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -155,15 +186,17 @@ const currentCase = ref(null);
 
 const testCases = ref([]);
 const testRuns = ref([]);
+const acceptanceItems = ref([]);
 
 const normalizeReviewStatus = (status) => ({ pending_review: 'pending', passed: 'passed', failed: 'failed', needs_retest: 'manual_retest', ignored: 'ignored' }[status] || 'unreviewed');
 const latestRunByCase = (caseId) => testRuns.value.find(run => run.test_case_id === caseId);
 
 const loadTestingData = async () => {
   try {
-    const [cases, runs] = await Promise.all([
+    const [cases, runs, plan] = await Promise.all([
       api.listTestCases(route.params.id),
-      api.listTestRuns(route.params.id)
+      api.listTestRuns(route.params.id),
+      api.getPlan(route.params.id)
     ]);
     testRuns.value = runs || [];
     testCases.value = (cases || []).map(testCase => {
@@ -184,6 +217,14 @@ const loadTestingData = async () => {
         testRunId: run?.id
       };
     });
+
+    // 加载验收检查项
+    acceptanceItems.value = (plan?.acceptance_items || []).map(item => ({
+      id: item.id,
+      description: item.description,
+      feature: item.feature_point_id || '-',
+      passed: false
+    }));
   } catch (error) {
     ElMessage.error(error.message || '测试数据加载失败');
   }
@@ -281,6 +322,26 @@ const finalizeReview = (action, msg) => {
     drawerVisible.value = false;
   }).catch(error => {
     ElMessage.error(error.message || '复核失败');
+  });
+};
+
+// 标记验收项通过
+const markAcceptancePassed = (item) => {
+  ElMessageBox.confirm(
+    `确认标记验收项 "${item.description}" 为已通过吗？`,
+    '确认验收',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'success'
+    }
+  ).then(() => {
+    // TODO: 调用 API 更新验收项状态
+    // api.updateAcceptanceItem(route.params.id, item.id, { passed: true })
+    item.passed = true;
+    ElMessage.success('验收项已标记为通过');
+  }).catch(() => {
+    // 用户取消
   });
 };
 </script>

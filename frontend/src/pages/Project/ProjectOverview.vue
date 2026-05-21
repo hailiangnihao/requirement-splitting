@@ -10,7 +10,7 @@
       </div>
       <div class="header-right">
         <span class="update-time">最后更新：10分钟前</span>
-        <el-button type="primary">发布周报</el-button>
+        <el-button type="primary" @click="handlePublishWeekly">发布周报</el-button>
       </div>
     </div>
 
@@ -142,6 +142,7 @@ import { ref, computed, onMounted, onUnmounted, markRaw, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import * as echarts from 'echarts';
 import { Warning, MagicStick } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { api } from '../../api/client';
 
 const route = useRoute();
@@ -195,6 +196,17 @@ const loadOverview = async () => {
   await nextTick();
   initTaskChart();
   initBugChart();
+};
+
+// 发布周报
+const handlePublishWeekly = () => {
+  ElMessage.info({
+    message: '周报功能开发中，敬请期待！',
+    duration: 2000
+  });
+  // TODO: 实现周报生成和发布功能
+  // 可以调用后端 API 生成项目周报
+  // 包含：本周完成任务、测试进度、缺陷统计、风险提示等
 };
 
 // 初始化任务环形图
