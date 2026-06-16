@@ -15,6 +15,12 @@ func (p *StubProvider) Run(ctx context.Context, input TaskInput) (TaskOutput, er
 	switch input.Type {
 	case TaskSplitRequirement:
 		return TaskOutput{Type: input.Type, Result: splitRequirementStub()}, nil
+	case TaskType("execute_ai_test"):
+		return TaskOutput{Type: input.Type, Result: executeAITestStub()}, nil
+	case TaskAnalyzeChangeImpact:
+		return TaskOutput{Type: input.Type, Result: analyzeChangeImpactStub()}, nil
+	case TaskType("generate_health_insight"):
+		return TaskOutput{Type: input.Type, Result: generateHealthInsightStub()}, nil
 	default:
 		return TaskOutput{}, fmt.Errorf("stub provider does not support task %s", input.Type)
 	}
@@ -83,6 +89,63 @@ func splitRequirementStub() map[string]any {
 		},
 		"risks": []map[string]any{
 			{"key": "risk_ai_overwrite", "category": "ai_control", "level": "high", "title": "AI 结果直接污染正式计划", "description": "必须通过草稿区和人工发布机制控制 AI 输出"},
+		},
+	}
+}
+
+func generateHealthInsightStub() map[string]any {
+	return map[string]any{
+		"health_status":     "at_risk",
+		"executive_summary": "表面开发进度可观，但核心链路质量存在隐患，新增功能缺乏测试保护。",
+		"top_risks": []map[string]any{
+			{
+				"title":       "测试覆盖盲区过大",
+				"description": "存在多个未编写用例的功能点（Untested Features），核心逻辑处于无保护上线状态。",
+			},
+			{
+				"title":       "缺陷修复滞后",
+				"description": "遗留了 Active Defects 且未被闭环，质量债务正在堆积。",
+			},
+		},
+		"action_items": []string{
+			"立即停止新功能开发（Feature Freeze），开展 Bug Bash 清理存量缺陷。",
+			"要求研发强制为高危功能点补齐正向测试用例并提交验证。",
+		},
+	}
+}
+
+// analyzeChangeImpactStub 模拟 AI 分析需求变更后的影响面
+func analyzeChangeImpactStub() map[string]any {
+	return map[string]any{
+		"risk_level": "medium",
+		"summary":    "本次变更将引入第三方 OAuth 体系，主要影响现有的用户登录模块，需额外增加数据库字段以绑定微信 openid。",
+		"affected_feature_points": []string{
+			"fp-0-0", // 假设这是原计划里的"登录功能点" ID
+		},
+		"affected_test_cases": []map[string]any{
+			{"test_case_id": "tc-0-0-0", "action": "modify", "reason": "原有登录用例需要扩充扫码登录的分支覆盖"},
+		},
+		"new_tasks_suggested": []map[string]any{
+			{"title": "集成微信扫码登录 SDK", "description": "后端对接微信开放平台获取 access_token"},
+			{"title": "更新 User 表结构", "description": "增加 wechat_openid 字段并建立索引"},
+			{"title": "前端扫码 UI 开发", "description": "登录页增加二维码轮询状态机制"},
+		},
+		"estimated_extra_days": 3,
+	}
+}
+
+// executeAITestStub 模拟 AI 执行测试用例后返回的结果
+func executeAITestStub() map[string]any {
+	return map[string]any{
+		"actual_result":       "测试用例执行完成：页面成功跳转至首页，但右上角未显示用户自定义头像，而是显示了默认的灰色占位图。",
+		"is_defect_suggested": true, // AI 认为这是一个 Bug，建议提缺陷
+		"evidence": map[string]any{
+			"screenshots": []string{"http://mock-storage.local/screenshot_home_avatar_missing.png"},
+			"logs":        "INFO: User clicked login button\nWARN: Avatar image resource returned 404 Not Found, falling back to default.",
+			"api_response": map[string]any{
+				"status": 200,
+				"body":   map[string]any{"token": "mock_jwt_token_123", "avatar_url": nil},
+			},
 		},
 	}
 }

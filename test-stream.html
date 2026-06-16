@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>流式API测试 - 支持思考过程展示</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 50px auto; padding: 20px; }
+        .progress-box { background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .message { padding: 8px; margin: 5px 0; background: white; border-left: 4px solid #409EFF; }
+        .error { border-left-color: #F56C6C; }
+        .success { border-left-color: #67C23A; }
+        .thinking { border-left-color: #9C27B0; background: #F3E5F5; }
+        button { padding: 10px 20px; background: #409EFF; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #66b1ff; }
+        textarea { width: 100%; height: 150px; margin: 10px 0; padding: 10px; font-size: 14px; }
+
+        /* 思考过程展示 */
+        .thinking-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            color: white;
+        }
+        .thinking-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        .thinking-content {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            padding: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+            color: #303133;
+        }
+        .thinking-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .pulse-icon {
+            animation: pulse 2s infinite;
+            font-size: 24px;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* 结果展示 */
+        #result {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌊 流式API测试工具 - 支持思考过程</h1>
+    <p>测试GLM模型的思考过程实时展示和流式数据渲染</p>
+
+    <h3>输入需求</h3>
+    <textarea id="requirement" placeholder="请输入您的需求...">我们需要一个用户管理功能，支持用户注册、登录、个人信息修改和密码重置。用户注册时需要验证邮箱和手机号，登录支持账号密码和手机验证码两种方式。</textarea>
+
+    <button onclick="testStream()">🚀 开始流式拆分</button>
+    <button onclick="clearAll()" style="background: #909399; margin-left: 10px;">清空</button>
+
+    <!-- 思考过程展示区 -->
+    <div id="thinkingContainer" style="display: none;">
+        <div class="thinking-box">
+            <div class="thinking-header">
+                <span class="pulse-icon">🧠</span>
+                <span>AI 思考过程</span>
+            </div>
+            <div class="thinking-content">
+                <pre id="thinkingContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="progress-box">
+        <h3>实时进度</h3>
+        <div id="progress"></div>
+    </div>
+
+    <div class="progress-box">
+        <h3>返回结果</h3>
+        <pre id="result"></pre>
+    </div>
+
+    <script>
+        const baseURL = 'http://localhost:8080';
+
+        function clearAll() {
+            document.getElementById('progress').innerHTML = '';
+            document.getElementById('result').textContent = '';
+            document.getElementById('thinkingContent').textContent = '';
+            document.getElementById('thinkingContainer').style.display = 'none';
+        }
+
+        async function testStream() {
+            const requirement = document.getElementById('requirement').value;
+            const progressDiv = document.getElementById('progress');
+            const resultDiv = document.getElementById('result');
+            const thinkingContainer = document.getElementById('thinkingContainer');
+            const thinkingContent = document.getElementById('thinkingContent');
+
+            clearAll();
+
+            try {
+                addMessage('🚀 准备中...', 'info');
+
+                // 先创建需求
+                const reqResponse = await fetch(`${baseURL}/api/projects/test-project/requirements`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: '测试需求',
+                        content: requirement,
+                        source_type: 'manual'
+                    })
+                });
+
+                const requirementData = await reqResponse.json();
+                addMessage('✅ 需求创建成功，开始AI拆分...', 'success');
+
+                // 流式调用
+                const response = await fetch(`${baseURL}/api/projects/test-project/ai/split-requirement/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        requirement_id: requirementData.id,
+                        content: requirement
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                let currentThinking = '';
+                let currentContent = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        addMessage('✅ 流式传输完成', 'success');
+                        break;
+                    }
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    lines.forEach(line => {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                handleProgress(data, progressDiv, resultDiv, thinkingContainer, thinkingContent);
+                            } catch (e) {
+                                console.error('解析失败:', e);
+                            }
+                        }
+                    });
+                }
+
+            } catch (error) {
+                addMessage('❌ 错误: ' + error.message, 'error');
+            }
+        }
+
+        function handleProgress(data, progressDiv, resultDiv, thinkingContainer, thinkingContent) {
+            if (data.type === 'progress') {
+                addMessage('⏳ ' + data.message, 'info');
+            } else if (data.type === 'thinking') {
+                // 展示思考过程
+                thinkingContainer.style.display = 'block';
+                thinkingContent.textContent = data.thinking;
+                addMessage('🧠 AI正在思考...', 'thinking');
+            } else if (data.type === 'content') {
+                // 实时更新内容
+                addMessage('📝 ' + data.message, 'info');
+
+                // 尝试解析JSON并格式化显示
+                try {
+                    const jsonData = JSON.parse(data.content);
+                    resultDiv.textContent = JSON.stringify(jsonData, null, 2);
+                    addMessage('✅ 已解析JSON数据', 'success');
+                } catch (e) {
+                    resultDiv.textContent = data.content;
+                }
+            } else if (data.type === 'result') {
+                addMessage('📊 AI正在返回数据...', 'success');
+                resultDiv.textContent = JSON.stringify(data.data, null, 2);
+            } else if (data.type === 'complete') {
+                addMessage('✅ 完成！草稿ID: ' + (data.data?.id || 'N/A'), 'success');
+                if (data.data) {
+                    resultDiv.textContent = JSON.stringify(data.data, null, 2);
+                }
+            } else if (data.type === 'error') {
+                addMessage('❌ 错误: ' + data.message, 'error');
+            }
+        }
+
+        function addMessage(text, type = 'info') {
+            const div = document.getElementById('progress');
+            const msg = document.createElement('div');
+            msg.className = `message ${type}`;
+            msg.textContent = new Date().toLocaleTimeString() + ' - ' + text;
+            div.appendChild(msg);
+            div.scrollTop = div.scrollHeight;
+        }
+    </script>
+</body>
+</html>
+

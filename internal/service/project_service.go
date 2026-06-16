@@ -2,14 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"requirement-splitting/internal/domain"
 	"requirement-splitting/internal/repository"
 )
-
-var ErrValidation = errors.New("validation failed")
 
 type ProjectService struct {
 	repo repository.ProjectRepository
@@ -31,6 +28,17 @@ func (s *ProjectService) CreateProject(ctx context.Context, input CreateProjectI
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return domain.Project{}, fieldError("name is required")
+	}
+
+	// 输入长度验证
+	if len(name) > 100 {
+		return domain.Project{}, fieldError("project name too long (max 100 chars)")
+	}
+	if len(input.Objective) > 500 {
+		return domain.Project{}, fieldError("objective too long (max 500 chars)")
+	}
+	if len(input.Scope) > 1000 {
+		return domain.Project{}, fieldError("scope too long (max 1000 chars)")
 	}
 
 	project, err := s.repo.CreateProject(ctx, domain.Project{
@@ -117,6 +125,4 @@ func (s *ProjectService) ListRequirements(ctx context.Context, projectID string)
 	return s.repo.ListRequirements(ctx, projectID)
 }
 
-func fieldError(message string) error {
-	return errors.Join(ErrValidation, errors.New(message))
-}
+// fieldError moved to errors.go
